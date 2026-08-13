@@ -315,8 +315,22 @@ local function snapWindowToPixels()
         return
     end
 
-    local width = math.min(900, math.max(260, viewport.X - 24))
-    local height = math.min(680, math.max(360, viewport.Y - 24))
+    local mobileViewport = viewport.X < 760 or viewport.Y < 620
+    local width
+    local height
+
+    if mobileViewport then
+        -- Mobile windows breathe inside the viewport instead of occupying
+        -- almost every available pixel.
+        width = math.min(700, math.floor(viewport.X * 0.94), viewport.X - 12)
+        height = math.min(620, math.floor(viewport.Y * 0.88), viewport.Y - 16)
+        width = math.max(240, width)
+        height = math.max(300, height)
+    else
+        width = math.min(900, math.max(260, viewport.X - 24))
+        height = math.min(680, math.max(360, viewport.Y - 24))
+    end
+
     width = math.min(viewport.X, math.floor(width / 2) * 2)
     height = math.min(viewport.Y, math.floor(height / 2) * 2)
 
@@ -770,8 +784,8 @@ local content = create("Frame", {
     Size = UDim2.new(1, -51, 0, 0),
     ZIndex = 5,
 }, body)
-padding(content, 0, 0, 22, 24)
-create("UIListLayout", {
+local contentPadding = padding(content, 0, 0, 22, 24)
+local contentLayout = create("UIListLayout", {
     Padding = UDim.new(0, 14),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, content)
@@ -1122,6 +1136,7 @@ end
 
 local currentLanguage = "en"
 local compact = false
+local shortMobile = false
 local copyToken = 0
 
 local function resizeColumns()
@@ -1130,7 +1145,7 @@ local function resizeColumns()
     end
 
     local width = columns.AbsoluteSize.X
-    local stack = width < 660
+    local stack = compact or width < 660
     local signsHeight = math.max(94, signsLayout.AbsoluteContentSize.Y + 36)
     local actionsHeight = math.max(94, actionsLayout.AbsoluteContentSize.Y + 36)
 
@@ -1158,59 +1173,135 @@ local function responsiveLayout()
         return
     end
 
-    compact = window.AbsoluteSize.X < 590
+    local width = window.AbsoluteSize.X
+    local height = window.AbsoluteSize.Y
+    compact = width < 760 or height < 620
+    shortMobile = compact and height < 500 and width >= 520
+    shadow.Visible = not compact
 
-    if compact then
-        header.Size = UDim2.new(1, 0, 0, 112)
-        brand.Position = UDim2.fromOffset(18, 12)
+    if shortMobile then
+        -- Mobile landscape: keep chrome in a single short row so the
+        -- scrollable content still has useful vertical room.
+        header.Size = UDim2.new(1, 0, 0, 56)
+        brand.Position = UDim2.fromOffset(14, 12)
         safetyPill.Visible = false
-        closeButtonTop.Position = UDim2.new(1, -50, 0, 12)
+        closeButtonTop.Position = UDim2.new(1, -44, 0, 12)
 
-        languageBar.Position = UDim2.new(0, 18, 0, 61)
-        languageBar.Size = UDim2.new(1, -36, 0, 34)
+        languageBar.Position = UDim2.new(1, -326, 0, 11)
+        languageBar.Size = UDim2.fromOffset(272, 34)
         for code, data in pairs(languageButtons) do
             data.text.Text = COPY[code].languageShort
+            data.text.TextSize = 11
         end
 
-        body.Position = UDim2.new(0, 0, 0, 112)
-        body.Size = UDim2.new(1, 0, 1, -202)
-        footer.Position = UDim2.new(0, 0, 1, -90)
-        footer.Size = UDim2.new(1, 0, 0, 90)
+        body.Position = UDim2.new(0, 0, 0, 56)
+        body.Size = UDim2.new(1, 0, 1, -116)
+        footer.Position = UDim2.new(0, 0, 1, -60)
+        footer.Size = UDim2.new(1, 0, 0, 60)
+        body.ScrollBarThickness = 2
 
         safeIcon.Visible = false
         safeTitle.Visible = false
         safeText.Visible = false
-        copyButton.Position = UDim2.new(0, 16, 0.5, -20)
-        copyButton.Size = UDim2.new(0.42, -4, 0, 40)
-        closeButton.Position = UDim2.new(0.42, 8, 0.5, -20)
-        closeButton.Size = UDim2.new(0.58, -24, 0, 40)
+        copyButton.Position = UDim2.new(0, 12, 0.5, -18)
+        copyButton.Size = UDim2.new(0.44, -5, 0, 36)
+        closeButton.Position = UDim2.new(0.44, 7, 0.5, -18)
+        closeButton.Size = UDim2.new(0.56, -19, 0, 36)
+        copyButton.TextSize = 12
+        closeButton.TextSize = 12
 
-        content.Position = UDim2.fromOffset(16, 0)
-        content.Size = UDim2.new(1, -35, 0, 0)
-        hero.Size = UDim2.new(1, 0, 0, 244)
-        alertIcon.Position = UDim2.fromOffset(18, 19)
-        alertIcon.Size = UDim2.fromOffset(44, 44)
-        badge.Position = UDim2.fromOffset(72, 19)
-        heroTitle.Position = UDim2.fromOffset(18, 78)
-        heroTitle.Size = UDim2.new(1, -36, 0, 62)
-        heroTitle.TextSize = 25
-        heroIntro.Position = UDim2.fromOffset(18, 143)
-        heroIntro.Size = UDim2.new(1, -36, 0, 82)
+        content.Position = UDim2.fromOffset(12, 0)
+        content.Size = UDim2.new(1, -27, 0, 0)
+        contentPadding.PaddingTop = UDim.new(0, 12)
+        contentPadding.PaddingBottom = UDim.new(0, 14)
+        contentLayout.Padding = UDim.new(0, 10)
 
-        criticalWarning.Size = UDim2.new(1, 0, 0, 190)
-        freezeRow.Position = UDim2.new(0, 14, 0, 10)
-        freezeRow.Size = UDim2.new(1, -28, 0, 44)
-        weaponRow.Position = UDim2.new(0, 14, 0, 56)
-        weaponRow.Size = UDim2.new(1, -28, 0, 44)
-        lossPanel.Position = UDim2.new(0, 14, 0, 110)
-        lossPanel.Size = UDim2.new(1, -28, 0, 64)
+        hero.Size = UDim2.new(1, 0, 0, 184)
+        alertIcon.Position = UDim2.fromOffset(18, 20)
+        alertIcon.Size = UDim2.fromOffset(46, 46)
+        badge.Position = UDim2.fromOffset(78, 18)
+        heroTitle.Position = UDim2.fromOffset(78, 50)
+        heroTitle.Size = UDim2.new(1, -96, 0, 40)
+        heroTitle.TextSize = 24
+        heroIntro.Position = UDim2.fromOffset(78, 94)
+        heroIntro.Size = UDim2.new(1, -98, 0, 68)
+        heroIntro.TextSize = 13
 
-        why.Size = UDim2.new(1, 0, 0, 110)
-        infoIcon.Position = UDim2.fromOffset(15, 18)
-        whyTitle.Position = UDim2.fromOffset(67, 16)
-        whyTitle.Size = UDim2.new(1, -82, 0, 36)
-        whyText.Position = UDim2.fromOffset(67, 50)
-        whyText.Size = UDim2.new(1, -82, 0, 50)
+        criticalWarning.Size = UDim2.new(1, 0, 0, 148)
+        freezeRow.Position = UDim2.new(0, 14, 0, 11)
+        freezeRow.Size = UDim2.new(1, -28, 0, 34)
+        weaponRow.Position = UDim2.new(0, 14, 0, 47)
+        weaponRow.Size = UDim2.new(1, -28, 0, 34)
+        lossPanel.Position = UDim2.new(0, 14, 0, 92)
+        lossPanel.Size = UDim2.new(1, -28, 0, 42)
+
+        why.Size = UDim2.new(1, 0, 0, 82)
+        infoIcon.Position = UDim2.fromOffset(14, 20)
+        whyTitle.Position = UDim2.fromOffset(66, 14)
+        whyTitle.Size = UDim2.new(1, -80, 0, 24)
+        whyText.Position = UDim2.fromOffset(66, 39)
+        whyText.Size = UDim2.new(1, -80, 0, 35)
+    elseif compact then
+        -- Mobile portrait and narrow executor windows.
+        header.Size = UDim2.new(1, 0, 0, 94)
+        brand.Position = UDim2.fromOffset(14, 8)
+        safetyPill.Visible = false
+        closeButtonTop.Position = UDim2.new(1, -44, 0, 9)
+
+        languageBar.Position = UDim2.new(0, 12, 0, 50)
+        languageBar.Size = UDim2.new(1, -24, 0, 30)
+        for code, data in pairs(languageButtons) do
+            data.text.Text = COPY[code].languageShort
+            data.text.TextSize = 11
+        end
+
+        body.Position = UDim2.new(0, 0, 0, 94)
+        body.Size = UDim2.new(1, 0, 1, -162)
+        footer.Position = UDim2.new(0, 0, 1, -68)
+        footer.Size = UDim2.new(1, 0, 0, 68)
+        body.ScrollBarThickness = 2
+
+        safeIcon.Visible = false
+        safeTitle.Visible = false
+        safeText.Visible = false
+        copyButton.Position = UDim2.new(0, 10, 0.5, -18)
+        copyButton.Size = UDim2.new(0.43, -4, 0, 36)
+        closeButton.Position = UDim2.new(0.43, 6, 0.5, -18)
+        closeButton.Size = UDim2.new(0.57, -16, 0, 36)
+        copyButton.TextSize = 11
+        closeButton.TextSize = 11
+
+        content.Position = UDim2.fromOffset(10, 0)
+        content.Size = UDim2.new(1, -23, 0, 0)
+        contentPadding.PaddingTop = UDim.new(0, 10)
+        contentPadding.PaddingBottom = UDim.new(0, 12)
+        contentLayout.Padding = UDim.new(0, 9)
+
+        hero.Size = UDim2.new(1, 0, 0, 218)
+        alertIcon.Position = UDim2.fromOffset(14, 14)
+        alertIcon.Size = UDim2.fromOffset(40, 40)
+        badge.Position = UDim2.fromOffset(64, 14)
+        heroTitle.Position = UDim2.fromOffset(14, 67)
+        heroTitle.Size = UDim2.new(1, -28, 0, 54)
+        heroTitle.TextSize = 22
+        heroIntro.Position = UDim2.fromOffset(14, 124)
+        heroIntro.Size = UDim2.new(1, -28, 0, 78)
+        heroIntro.TextSize = 13
+
+        criticalWarning.Size = UDim2.new(1, 0, 0, 174)
+        freezeRow.Position = UDim2.new(0, 10, 0, 8)
+        freezeRow.Size = UDim2.new(1, -20, 0, 42)
+        weaponRow.Position = UDim2.new(0, 10, 0, 51)
+        weaponRow.Size = UDim2.new(1, -20, 0, 42)
+        lossPanel.Position = UDim2.new(0, 10, 0, 102)
+        lossPanel.Size = UDim2.new(1, -20, 0, 58)
+
+        why.Size = UDim2.new(1, 0, 0, 102)
+        infoIcon.Position = UDim2.fromOffset(12, 16)
+        whyTitle.Position = UDim2.fromOffset(62, 13)
+        whyTitle.Size = UDim2.new(1, -74, 0, 32)
+        whyText.Position = UDim2.fromOffset(62, 44)
+        whyText.Size = UDim2.new(1, -74, 0, 50)
     else
         header.Size = UDim2.new(1, 0, 0, 70)
         brand.Position = UDim2.new(0, 24, 0.5, -16)
@@ -1221,12 +1312,14 @@ local function responsiveLayout()
         languageBar.Size = UDim2.fromOffset(292, 34)
         for code, data in pairs(languageButtons) do
             data.text.Text = COPY[code].language
+            data.text.TextSize = 12
         end
 
         body.Position = UDim2.new(0, 0, 0, 70)
         body.Size = UDim2.new(1, 0, 1, -146)
         footer.Position = UDim2.new(0, 0, 1, -76)
         footer.Size = UDim2.new(1, 0, 0, 76)
+        body.ScrollBarThickness = 3
 
         safeIcon.Visible = true
         safeTitle.Visible = true
@@ -1235,9 +1328,14 @@ local function responsiveLayout()
         copyButton.Size = UDim2.fromOffset(174, 38)
         closeButton.Position = UDim2.new(1, -220, 0.5, -19)
         closeButton.Size = UDim2.fromOffset(196, 38)
+        copyButton.TextSize = 13
+        closeButton.TextSize = 13
 
         content.Position = UDim2.fromOffset(24, 0)
         content.Size = UDim2.new(1, -51, 0, 0)
+        contentPadding.PaddingTop = UDim.new(0, 22)
+        contentPadding.PaddingBottom = UDim.new(0, 24)
+        contentLayout.Padding = UDim.new(0, 14)
         hero.Size = UDim2.new(1, 0, 0, 184)
         alertIcon.Position = UDim2.fromOffset(24, 26)
         alertIcon.Size = UDim2.fromOffset(54, 54)
@@ -1247,6 +1345,7 @@ local function responsiveLayout()
         heroTitle.TextSize = 29
         heroIntro.Position = UDim2.fromOffset(96, 100)
         heroIntro.Size = UDim2.new(1, -128, 0, 60)
+        heroIntro.TextSize = 15
 
         criticalWarning.Size = UDim2.new(1, 0, 0, 152)
         freezeRow.Position = UDim2.new(0, 18, 0, 14)
@@ -1262,6 +1361,23 @@ local function responsiveLayout()
         whyTitle.Size = UDim2.new(1, -92, 0, 22)
         whyText.Position = UDim2.fromOffset(72, 39)
         whyText.Size = UDim2.new(1, -92, 0, 34)
+    end
+
+    local smallText = compact and 12 or 13
+    signsTitle.TextSize = compact and 14 or 15
+    actionsTitle.TextSize = compact and 14 or 15
+    signsSubtitle.TextSize = compact and 11 or 12
+    actionsSubtitle.TextSize = compact and 11 or 12
+    freezeWarningText.TextSize = compact and 13 or 15
+    weaponWarningText.TextSize = compact and 13 or 15
+    lossWarningText.TextSize = compact and 12 or 14
+    whyTitle.TextSize = compact and 13 or 14
+    whyText.TextSize = compact and 12 or 13
+    for _, rowText in ipairs(signsRows) do
+        rowText.TextSize = smallText
+    end
+    for _, rowText in ipairs(actionRows) do
+        rowText.TextSize = smallText
     end
 
     task.defer(resizeColumns)
@@ -1486,6 +1602,12 @@ local windowStart
 connect(header.InputBegan, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+        -- Touch dragging easily pulls a full-screen modal outside a phone's
+        -- viewport while the user is trying to tap a language button.
+        if compact and input.UserInputType == Enum.UserInputType.Touch then
+            return
+        end
+
         dragging = true
         dragStart = input.Position
         windowStart = window.Position
@@ -1508,12 +1630,14 @@ end)
 connect(UserInputService.InputChanged, function(input)
     if dragging and input == dragInput then
         local delta = input.Position - dragStart
-        window.Position = UDim2.new(
-            windowStart.X.Scale,
-            windowStart.X.Offset + delta.X,
-            windowStart.Y.Scale,
-            windowStart.Y.Offset + delta.Y
-        )
+        local viewport = overlay.AbsoluteSize
+        local margin = compact and 4 or 8
+        local maximumX = math.max(margin, viewport.X - window.AbsoluteSize.X - margin)
+        local maximumY = math.max(margin, viewport.Y - window.AbsoluteSize.Y - margin)
+        local nextX = math.clamp(windowStart.X.Offset + delta.X, margin, maximumX)
+        local nextY = math.clamp(windowStart.Y.Offset + delta.Y, margin, maximumY)
+
+        window.Position = UDim2.fromOffset(math.floor(nextX), math.floor(nextY))
     end
 end)
 
