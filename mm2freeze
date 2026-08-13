@@ -1,0 +1,1550 @@
+--[[
+    BobloScript Safety Warning — premium UI revision
+
+    Safe by design:
+      • no gameplay actions
+      • no network requests
+      • no account, device, or file access
+      • the only optional action is copying https://bobloscript.com
+]]
+
+local SITE_URL = "https://bobloscript.com"
+local GUI_NAMES = {
+    "BobloScriptSafetyWarning",
+    "BobloScriptSafetyWarningV2",
+}
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local connections = {}
+local destroyed = false
+
+local function connect(signal, callback)
+    local connection = signal:Connect(callback)
+    table.insert(connections, connection)
+    return connection
+end
+
+local function environmentTable()
+    if type(getgenv) == "function" then
+        local ok, result = pcall(getgenv)
+        if ok and type(result) == "table" then
+            return result
+        end
+    end
+    return _G
+end
+
+local environment = environmentTable()
+if type(environment.__BOBLOSCRIPT_SAFETY_CLEANUP) == "function" then
+    pcall(environment.__BOBLOSCRIPT_SAFETY_CLEANUP)
+end
+
+local function preferredParent()
+    if type(gethui) == "function" then
+        local ok, result = pcall(gethui)
+        if ok and result then
+            return result
+        end
+    end
+    return CoreGui
+end
+
+local guiParent = preferredParent()
+for _, name in ipairs(GUI_NAMES) do
+    local old = guiParent:FindFirstChild(name)
+    if old then
+        old:Destroy()
+    end
+end
+
+local function hex(value)
+    value = value:gsub("#", "")
+    return Color3.fromRGB(
+        tonumber(value:sub(1, 2), 16),
+        tonumber(value:sub(3, 4), 16),
+        tonumber(value:sub(5, 6), 16)
+    )
+end
+
+local COLOR = {
+    backdrop = hex("050608"),
+    window = hex("0E1014"),
+    elevated = hex("14171C"),
+    elevatedHover = hex("191D23"),
+    soft = hex("111419"),
+    border = hex("272B33"),
+    borderSoft = hex("20242B"),
+    text = hex("F7F8FA"),
+    textSecondary = hex("D2D7E0"),
+    textMuted = hex("9AA3B1"),
+    teal = hex("20D3B0"),
+    tealBright = hex("42E2C2"),
+    tealDeep = hex("0A302A"),
+    red = hex("FF6975"),
+    redDeep = hex("30171C"),
+    amber = hex("F2B84B"),
+    white = Color3.new(1, 1, 1),
+}
+
+local FONT = {
+    regular = Font.fromEnum(Enum.Font.Arimo),
+    medium = Font.fromEnum(Enum.Font.ArimoBold),
+    semibold = Font.fromEnum(Enum.Font.ArimoBold),
+    bold = Font.fromEnum(Enum.Font.ArimoBold),
+    extraBold = Font.fromEnum(Enum.Font.ArimoBold),
+}
+
+local COPY = {
+    en = {
+        language = "English",
+        languageShort = "EN",
+        safetyCenter = "Safety Center",
+        badge = "ACCOUNT SAFETY",
+        title = "This feature isn't real.",
+        intro = "Client-side scripts cannot create server-owned items, control another player's trade, or add protected inventory. Claims like these are bait.",
+        freezeWarning = "FREEZE TRADE SCRIPTS DO NOT EXIST!",
+        weaponWarning = "WEAPON SPAWNER SCRIPTS DO NOT EXIST!",
+        lossWarning = "TRYING TO USE THEM MEANS LOSING YOUR ACCOUNT!",
+        whyTitle = "The server decides what you own",
+        whyText = "A script may fake something on your screen, but it cannot turn that visual change into real server data.",
+        signsTitle = "Red flags",
+        signsSubtitle = "Leave immediately if a script does this",
+        signs = {
+            "Hides its source in an obfuscated loader or unknown link",
+            "Asks for a cookie, password, QR scan, extension, or download",
+            "Tells you to disable antivirus or ignore a security warning",
+            "Sends data to webhooks or unfamiliar domains",
+            "Promises impossible server features such as Freeze Trade or Weapon Spawner",
+        },
+        actionsTitle = "Secure your account",
+        actionsSubtitle = "If you already ran something suspicious",
+        actions = {
+            "Close Roblox and the executor",
+            "Change your Roblox password on a trusted device",
+            "Sign out of other sessions and turn on 2-step verification",
+            "Remove suspicious files or extensions and scan the device",
+            "Contact Roblox Support if any items are missing",
+        },
+        safe = "Safe notice",
+        safeText = "No game actions. No data collected or sent.",
+        copy = "Copy bobloscript.com",
+        copied = "Link copied",
+        copyFailed = "Clipboard unavailable",
+        close = "I understand — close",
+        closeLabel = "Close safety notice",
+        heartTitle = "Stay Safe",
+    },
+    ru = {
+        language = "Русский",
+        languageShort = "RU",
+        safetyCenter = "Центр безопасности",
+        badge = "БЕЗОПАСНОСТЬ АККАУНТА",
+        title = "Такой функции не существует.",
+        intro = "Локальный скрипт не может создавать серверные предметы, управлять чужой сделкой или добавлять защищённый инвентарь. Такие обещания — приманка.",
+        freezeWarning = "НЕ СУЩЕСТВУЕТ FREEZE TRADE СКРИПТОВ!",
+        weaponWarning = "НЕ СУЩЕСТВУЕТ WEAPONS SPAWNER СКРИПТОВ!",
+        lossWarning = "ПОПЫТКА ИХ ИСПОЛЬЗОВАТЬ — ОЗНАЧАЕТ ПОТЕРЯТЬ ВАШ АККАУНТ!",
+        whyTitle = "Что вам принадлежит, решает сервер",
+        whyText = "Скрипт может подделать картинку на вашем экране, но не способен превратить её в настоящие серверные данные.",
+        signsTitle = "Опасные признаки",
+        signsSubtitle = "Сразу уходите, если скрипт делает это",
+        signs = {
+            "Прячет код в обфусцированном loader или неизвестной ссылке",
+            "Просит cookie, пароль, QR-код, расширение или скачивание",
+            "Требует отключить антивирус или игнорировать предупреждение",
+            "Отправляет данные на вебхуки или незнакомые домены",
+            "Обещает невозможные функции вроде Freeze Trade или Weapon Spawner",
+        },
+        actionsTitle = "Защитите аккаунт",
+        actionsSubtitle = "Если вы уже запускали подозрительный код",
+        actions = {
+            "Закройте Roblox и executor",
+            "Смените пароль Roblox с доверенного устройства",
+            "Завершите другие сессии и включите двухэтапную проверку",
+            "Удалите подозрительные файлы и расширения, проверьте устройство",
+            "Обратитесь в Roblox Support, если пропали предметы",
+        },
+        safe = "Безопасное уведомление",
+        safeText = "Нет действий в игре. Данные не собираются и не отправляются.",
+        copy = "Скопировать bobloscript.com",
+        copied = "Ссылка скопирована",
+        copyFailed = "Буфер обмена недоступен",
+        close = "Понятно — закрыть",
+        closeLabel = "Закрыть уведомление",
+        heartTitle = "Берегите себя",
+    },
+    es = {
+        language = "Español",
+        languageShort = "ES",
+        safetyCenter = "Centro de seguridad",
+        badge = "SEGURIDAD DE LA CUENTA",
+        title = "Esta función no existe.",
+        intro = "Un script local no puede crear objetos del servidor, controlar el intercambio de otro jugador ni añadir inventario protegido. Estas promesas son un engaño.",
+        freezeWarning = "¡LOS SCRIPTS FREEZE TRADE NO EXISTEN!",
+        weaponWarning = "¡LOS SCRIPTS WEAPON SPAWNER NO EXISTEN!",
+        lossWarning = "¡INTENTAR USARLOS SIGNIFICA PERDER TU CUENTA!",
+        whyTitle = "El servidor decide lo que posees",
+        whyText = "Un script puede fingir algo en tu pantalla, pero no convertir ese cambio visual en datos reales del servidor.",
+        signsTitle = "Señales de peligro",
+        signsSubtitle = "Sal de inmediato si un script hace esto",
+        signs = {
+            "Oculta el código en un loader ofuscado o enlace desconocido",
+            "Pide cookies, contraseña, QR, extensión o descarga",
+            "Te dice que desactives el antivirus o ignores un aviso",
+            "Envía datos a webhooks o dominios desconocidos",
+            "Promete funciones imposibles como Freeze Trade o Weapon Spawner",
+        },
+        actionsTitle = "Protege tu cuenta",
+        actionsSubtitle = "Si ya ejecutaste algo sospechoso",
+        actions = {
+            "Cierra Roblox y el executor",
+            "Cambia tu contraseña de Roblox en un dispositivo seguro",
+            "Cierra otras sesiones y activa la verificación en dos pasos",
+            "Elimina archivos o extensiones sospechosos y analiza el dispositivo",
+            "Contacta con Soporte de Roblox si faltan objetos",
+        },
+        safe = "Aviso seguro",
+        safeText = "Sin acciones en el juego. No recopila ni envía datos.",
+        copy = "Copiar bobloscript.com",
+        copied = "Enlace copiado",
+        copyFailed = "Portapapeles no disponible",
+        close = "Entendido — cerrar",
+        closeLabel = "Cerrar aviso de seguridad",
+        heartTitle = "Mantente a salvo",
+    },
+}
+
+local function create(className, properties, parent)
+    local object = Instance.new(className)
+    for property, value in pairs(properties or {}) do
+        object[property] = value
+    end
+    if parent then
+        object.Parent = parent
+    end
+    return object
+end
+
+local function corner(parent, radius)
+    return create("UICorner", { CornerRadius = UDim.new(0, radius) }, parent)
+end
+
+local function stroke(parent, color, transparency, thickness)
+    return create("UIStroke", {
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Color = color,
+        Thickness = thickness or 1,
+        Transparency = transparency or 0,
+    }, parent)
+end
+
+local function padding(parent, left, right, top, bottom)
+    return create("UIPadding", {
+        PaddingLeft = UDim.new(0, left or 0),
+        PaddingRight = UDim.new(0, right or 0),
+        PaddingTop = UDim.new(0, top or 0),
+        PaddingBottom = UDim.new(0, bottom or 0),
+    }, parent)
+end
+
+local function label(parent, properties)
+    local values = {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        FontFace = FONT.regular,
+        Text = "",
+        TextColor3 = COLOR.text,
+        TextScaled = false,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+    }
+    for key, value in pairs(properties or {}) do
+        values[key] = value
+    end
+    return create("TextLabel", values, parent)
+end
+
+local screenGui = create("ScreenGui", {
+    Name = GUI_NAMES[2],
+    DisplayOrder = 2147483647,
+    IgnoreGuiInset = true,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
+
+local parented = pcall(function()
+    screenGui.Parent = guiParent
+end)
+if not parented then
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+    guiParent = screenGui.Parent
+end
+
+-- A normal Frame is intentional here. CanvasGroup rasterizes all descendants
+-- into an off-screen texture and can make text look soft on some clients.
+local overlay = create("Frame", {
+    Name = "Overlay",
+    BackgroundColor3 = COLOR.backdrop,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Size = UDim2.fromScale(1, 1),
+    ZIndex = 1,
+}, screenGui)
+
+local window = create("Frame", {
+    Name = "Window",
+    AnchorPoint = Vector2.new(0, 0),
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(0, 0),
+    Size = UDim2.fromOffset(900, 680),
+    Visible = false,
+    ZIndex = 2,
+}, overlay)
+
+-- Keep the complete interface on whole pixels. Fractional scaling and
+-- half-pixel centering are another common source of blurry Roblox UI.
+local function snapWindowToPixels()
+    local viewport = overlay.AbsoluteSize
+    if viewport.X < 2 or viewport.Y < 2 then
+        return
+    end
+
+    local width = math.min(900, math.max(260, viewport.X - 24))
+    local height = math.min(680, math.max(360, viewport.Y - 24))
+    width = math.min(viewport.X, math.floor(width / 2) * 2)
+    height = math.min(viewport.Y, math.floor(height / 2) * 2)
+
+    local x = math.floor((viewport.X - width) / 2)
+    local y = math.floor((viewport.Y - height) / 2)
+
+    window.Size = UDim2.fromOffset(width, height)
+    window.Position = UDim2.fromOffset(x, y)
+end
+
+local shadow = create("Frame", {
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 0.42,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(-7, 7),
+    Size = UDim2.new(1, 14, 1, 4),
+    ZIndex = 2,
+}, window)
+corner(shadow, 19)
+
+local shell = create("Frame", {
+    BackgroundColor3 = COLOR.window,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Size = UDim2.fromScale(1, 1),
+    ZIndex = 3,
+}, window)
+corner(shell, 16)
+stroke(shell, COLOR.border, 0, 1)
+
+local heartToast = create("Frame", {
+    Name = "StaySafeMessage",
+    AnchorPoint = Vector2.new(0, 0),
+    BackgroundColor3 = COLOR.backdrop,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(0, 0),
+    Size = UDim2.fromOffset(360, 210),
+    Visible = false,
+    ZIndex = 30,
+}, overlay)
+
+local heartGlowOuter = create("Frame", {
+    BackgroundColor3 = COLOR.redDeep,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, -62, 0, 4),
+    Size = UDim2.fromOffset(124, 124),
+    ZIndex = 31,
+}, heartToast)
+corner(heartGlowOuter, 999)
+
+local heartGlowInner = create("Frame", {
+    BackgroundColor3 = COLOR.redDeep,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, -43, 0, 23),
+    Size = UDim2.fromOffset(86, 86),
+    ZIndex = 32,
+}, heartToast)
+corner(heartGlowInner, 999)
+
+local heartPulse = create("Frame", {
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, -43, 0, 23),
+    Size = UDim2.fromOffset(86, 86),
+    ZIndex = 32,
+}, heartToast)
+corner(heartPulse, 999)
+local heartPulseStroke = stroke(heartPulse, COLOR.red, 1, 2)
+
+local heartGlyph = label(heartToast, {
+    FontFace = FONT.extraBold,
+    Position = UDim2.new(0.5, -40, 0, 24),
+    Size = UDim2.fromOffset(80, 80),
+    Text = "♥",
+    TextColor3 = COLOR.red,
+    TextSize = 46,
+    TextTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 34,
+})
+
+local heartTitle = label(heartToast, {
+    FontFace = FONT.extraBold,
+    Position = UDim2.new(0, 12, 0, 126),
+    Size = UDim2.new(1, -24, 0, 32),
+    Text = COPY.en.heartTitle,
+    TextColor3 = COLOR.text,
+    TextSize = 24,
+    TextTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 33,
+})
+
+local heartBrand = label(heartToast, {
+    FontFace = FONT.bold,
+    Position = UDim2.new(0, 12, 0, 161),
+    Size = UDim2.new(1, -24, 0, 24),
+    Text = "BobloScript",
+    TextColor3 = COLOR.teal,
+    TextSize = 15,
+    TextTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 33,
+})
+
+local heartDecorations = {}
+for index, data in ipairs({
+    { -78, 44, 5, COLOR.red },
+    { 73, 30, 4, COLOR.teal },
+    { -65, 92, 3, COLOR.teal },
+    { 82, 83, 5, COLOR.red },
+}) do
+    local dot = create("Frame", {
+        BackgroundColor3 = data[4],
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0.5, data[1], 0, data[2]),
+        Size = UDim2.fromOffset(data[3], data[3]),
+        ZIndex = 33,
+    }, heartToast)
+    corner(dot, 999)
+    heartDecorations[index] = dot
+end
+
+local heartLineLeft = create("Frame", {
+    BackgroundColor3 = COLOR.border,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, -112, 0, 173),
+    Size = UDim2.fromOffset(52, 1),
+    ZIndex = 32,
+}, heartToast)
+local heartLineRight = create("Frame", {
+    BackgroundColor3 = COLOR.border,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 60, 0, 173),
+    Size = UDim2.fromOffset(52, 1),
+    ZIndex = 32,
+}, heartToast)
+
+local function positionHeartToast()
+    local viewport = overlay.AbsoluteSize
+    if viewport.X < 2 or viewport.Y < 2 then
+        return
+    end
+
+    local width = math.min(360, math.max(260, viewport.X - 24))
+    width = math.min(viewport.X, math.floor(width / 2) * 2)
+    local x = math.floor((viewport.X - width) / 2)
+    local y = math.floor((viewport.Y - 210) / 2)
+
+    heartToast.Size = UDim2.fromOffset(width, 210)
+    heartToast.Position = UDim2.fromOffset(x, y)
+end
+
+local header = create("Frame", {
+    Name = "Header",
+    Active = true,
+    BackgroundColor3 = COLOR.window,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 70),
+    ZIndex = 10,
+}, shell)
+
+local brand = create("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 24, 0.5, -16),
+    Size = UDim2.fromOffset(156, 32),
+    ZIndex = 11,
+}, header)
+label(brand, {
+    FontFace = FONT.extraBold,
+    Size = UDim2.fromOffset(55, 32),
+    Text = "Boblo",
+    TextSize = 19,
+    ZIndex = 12,
+})
+label(brand, {
+    FontFace = FONT.extraBold,
+    Position = UDim2.fromOffset(53, 0),
+    Size = UDim2.fromOffset(54, 32),
+    Text = "script",
+    TextColor3 = COLOR.teal,
+    TextSize = 19,
+    ZIndex = 12,
+})
+label(brand, {
+    FontFace = FONT.semibold,
+    Position = UDim2.fromOffset(106, 1),
+    Size = UDim2.fromOffset(30, 31),
+    Text = ".com",
+    TextColor3 = COLOR.textMuted,
+    TextSize = 10,
+    ZIndex = 12,
+})
+
+local safetyPill = create("Frame", {
+    BackgroundColor3 = COLOR.soft,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 180, 0.5, -14),
+    Size = UDim2.fromOffset(112, 28),
+    ZIndex = 11,
+}, header)
+corner(safetyPill, 7)
+stroke(safetyPill, COLOR.borderSoft, 0, 1)
+local safetyDot = create("Frame", {
+    BackgroundColor3 = COLOR.teal,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 10, 0.5, -3),
+    Size = UDim2.fromOffset(6, 6),
+    ZIndex = 12,
+}, safetyPill)
+corner(safetyDot, 99)
+local safetyPillText = label(safetyPill, {
+    FontFace = FONT.semibold,
+    Position = UDim2.fromOffset(23, 0),
+    Size = UDim2.new(1, -30, 1, 0),
+    TextColor3 = COLOR.textSecondary,
+    TextSize = 12,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    ZIndex = 12,
+})
+
+local languageBar = create("Frame", {
+    BackgroundColor3 = COLOR.soft,
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -352, 0.5, -17),
+    Size = UDim2.fromOffset(292, 34),
+    ZIndex = 11,
+}, header)
+corner(languageBar, 9)
+stroke(languageBar, COLOR.borderSoft, 0, 1)
+padding(languageBar, 3, 3, 3, 3)
+create("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 3),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    VerticalAlignment = Enum.VerticalAlignment.Center,
+}, languageBar)
+
+local closeButtonTop = create("TextButton", {
+    AutoButtonColor = false,
+    BackgroundColor3 = COLOR.elevated,
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -48, 0.5, -16),
+    Size = UDim2.fromOffset(32, 32),
+    Text = "",
+    ZIndex = 12,
+}, header)
+corner(closeButtonTop, 8)
+stroke(closeButtonTop, COLOR.border, 0, 1)
+for _, rotation in ipairs({ 45, -45 }) do
+    create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = COLOR.textMuted,
+        BorderSizePixel = 0,
+        Position = UDim2.fromScale(0.5, 0.5),
+        Rotation = rotation,
+        Size = UDim2.fromOffset(12, 1),
+        ZIndex = 13,
+    }, closeButtonTop)
+end
+
+create("Frame", {
+    BackgroundColor3 = COLOR.borderSoft,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 1, -1),
+    Size = UDim2.new(1, 0, 0, 1),
+    ZIndex = 12,
+}, header)
+
+local languageButtons = {}
+
+local function addStripe(flag, color, y, height, z)
+    return create("Frame", {
+        BackgroundColor3 = color,
+        BorderSizePixel = 0,
+        Position = UDim2.fromScale(0, y),
+        Size = UDim2.fromScale(1, height),
+        ZIndex = z,
+    }, flag)
+end
+
+local function flag(parent, code)
+    local container = create("Frame", {
+        BackgroundColor3 = COLOR.white,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 9, 0.5, -6),
+        Size = UDim2.fromOffset(19, 12),
+        ClipsDescendants = true,
+        ZIndex = 14,
+    }, parent)
+    corner(container, 2)
+
+    if code == "ru" then
+        addStripe(container, hex("FFFFFF"), 0, 1 / 3, 15)
+        addStripe(container, hex("3264BE"), 1 / 3, 1 / 3, 15)
+        addStripe(container, hex("D94A54"), 2 / 3, 1 / 3, 15)
+    elseif code == "es" then
+        addStripe(container, hex("C93B43"), 0, 0.25, 15)
+        addStripe(container, hex("F5C84B"), 0.25, 0.5, 15)
+        addStripe(container, hex("C93B43"), 0.75, 0.25, 15)
+    else
+        for index = 0, 6 do
+            addStripe(
+                container,
+                index % 2 == 0 and hex("D94A54") or hex("F6F6F6"),
+                index / 7,
+                1 / 7 + 0.01,
+                15
+            )
+        end
+        create("Frame", {
+            BackgroundColor3 = hex("355997"),
+            BorderSizePixel = 0,
+            Size = UDim2.fromScale(0.45, 0.58),
+            ZIndex = 16,
+        }, container)
+    end
+end
+
+for index, code in ipairs({ "en", "ru", "es" }) do
+    local button = create("TextButton", {
+        AutoButtonColor = false,
+        BackgroundColor3 = COLOR.soft,
+        BorderSizePixel = 0,
+        LayoutOrder = index,
+        Size = UDim2.new(1 / 3, -2, 1, 0),
+        Text = "",
+        ZIndex = 12,
+    }, languageBar)
+    corner(button, 6)
+    local outline = stroke(button, COLOR.borderSoft, 1, 1)
+    flag(button, code)
+    local text = label(button, {
+        FontFace = FONT.semibold,
+        Position = UDim2.fromOffset(36, 0),
+        Size = UDim2.new(1, -41, 1, 0),
+        Text = COPY[code].language,
+        TextColor3 = COLOR.textMuted,
+        TextSize = 12,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 14,
+    })
+    languageButtons[code] = { button = button, outline = outline, text = text }
+end
+
+local footer = create("Frame", {
+    Name = "Footer",
+    BackgroundColor3 = COLOR.window,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 1, -76),
+    Size = UDim2.new(1, 0, 0, 76),
+    ZIndex = 10,
+}, shell)
+create("Frame", {
+    BackgroundColor3 = COLOR.borderSoft,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 1),
+    ZIndex = 11,
+}, footer)
+
+local safeIcon = create("Frame", {
+    BackgroundColor3 = COLOR.tealDeep,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 24, 0.5, -18),
+    Size = UDim2.fromOffset(36, 36),
+    ZIndex = 12,
+}, footer)
+corner(safeIcon, 9)
+label(safeIcon, {
+    FontFace = FONT.bold,
+    Size = UDim2.fromScale(1, 1),
+    Text = "✓",
+    TextColor3 = COLOR.teal,
+    TextSize = 17,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 13,
+})
+local safeTitle = label(footer, {
+    FontFace = FONT.semibold,
+    Position = UDim2.new(0, 72, 0.5, -18),
+    Size = UDim2.new(1, -500, 0, 18),
+    TextSize = 13,
+    ZIndex = 12,
+})
+local safeText = label(footer, {
+    Position = UDim2.new(0, 72, 0.5, 0),
+    Size = UDim2.new(1, -500, 0, 16),
+    TextColor3 = COLOR.textMuted,
+    TextSize = 11,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    ZIndex = 12,
+})
+
+local copyButton = create("TextButton", {
+    AutoButtonColor = false,
+    BackgroundColor3 = COLOR.elevated,
+    BorderSizePixel = 0,
+    FontFace = FONT.semibold,
+    Position = UDim2.new(1, -406, 0.5, -19),
+    Size = UDim2.fromOffset(174, 38),
+    TextColor3 = COLOR.textSecondary,
+    TextSize = 13,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    ZIndex = 12,
+}, footer)
+corner(copyButton, 9)
+stroke(copyButton, COLOR.border, 0, 1)
+
+local closeButton = create("TextButton", {
+    AutoButtonColor = false,
+    BackgroundColor3 = COLOR.teal,
+    BorderSizePixel = 0,
+    FontFace = FONT.bold,
+    Position = UDim2.new(1, -220, 0.5, -19),
+    Size = UDim2.fromOffset(196, 38),
+    TextColor3 = COLOR.backdrop,
+    TextSize = 13,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    ZIndex = 12,
+}, footer)
+corner(closeButton, 9)
+
+local body = create("ScrollingFrame", {
+    Name = "Body",
+    Active = true,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    BottomImage = "",
+    CanvasSize = UDim2.fromOffset(0, 0),
+    Position = UDim2.new(0, 0, 0, 70),
+    ScrollBarImageColor3 = COLOR.border,
+    ScrollBarImageTransparency = 0.1,
+    ScrollBarThickness = 3,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    Size = UDim2.new(1, 0, 1, -146),
+    TopImage = "",
+    ZIndex = 4,
+}, shell)
+
+local content = create("Frame", {
+    AutomaticSize = Enum.AutomaticSize.Y,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(24, 0),
+    Size = UDim2.new(1, -51, 0, 0),
+    ZIndex = 5,
+}, body)
+padding(content, 0, 0, 22, 24)
+create("UIListLayout", {
+    Padding = UDim.new(0, 14),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, content)
+
+local hero = create("Frame", {
+    BackgroundColor3 = COLOR.elevated,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    LayoutOrder = 1,
+    Size = UDim2.new(1, 0, 0, 184),
+    ZIndex = 5,
+}, content)
+corner(hero, 14)
+stroke(hero, COLOR.border, 0, 1)
+create("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, hex("16201F")),
+        ColorSequenceKeypoint.new(0.48, hex("13181C")),
+        ColorSequenceKeypoint.new(1, COLOR.elevated),
+    }),
+    Rotation = 12,
+}, hero)
+
+local glow = create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = COLOR.teal,
+    BackgroundTransparency = 0.92,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(34, 25),
+    Size = UDim2.fromOffset(190, 190),
+    ZIndex = 6,
+}, hero)
+corner(glow, 999)
+
+local alertIcon = create("Frame", {
+    BackgroundColor3 = COLOR.redDeep,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(24, 26),
+    Size = UDim2.fromOffset(54, 54),
+    ZIndex = 7,
+}, hero)
+corner(alertIcon, 14)
+stroke(alertIcon, COLOR.red, 0.65, 1)
+label(alertIcon, {
+    FontFace = FONT.extraBold,
+    Size = UDim2.fromScale(1, 1),
+    Text = "!",
+    TextColor3 = COLOR.red,
+    TextSize = 24,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 8,
+})
+
+local badge = create("Frame", {
+    BackgroundColor3 = COLOR.redDeep,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(96, 25),
+    Size = UDim2.fromOffset(142, 23),
+    ZIndex = 7,
+}, hero)
+corner(badge, 99)
+local badgeDot = create("Frame", {
+    BackgroundColor3 = COLOR.red,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 9, 0.5, -2),
+    Size = UDim2.fromOffset(4, 4),
+    ZIndex = 8,
+}, badge)
+corner(badgeDot, 99)
+local badgeText = label(badge, {
+    FontFace = FONT.bold,
+    Position = UDim2.fromOffset(20, 0),
+    Size = UDim2.new(1, -25, 1, 0),
+    TextColor3 = COLOR.red,
+    TextSize = 10,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    ZIndex = 8,
+})
+
+local heroTitle = label(hero, {
+    FontFace = FONT.extraBold,
+    Position = UDim2.fromOffset(96, 54),
+    Size = UDim2.new(1, -124, 0, 42),
+    TextSize = 29,
+    TextWrapped = true,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    ZIndex = 7,
+})
+local heroIntro = label(hero, {
+    FontFace = FONT.regular,
+    LineHeight = 1.24,
+    Position = UDim2.fromOffset(96, 100),
+    Size = UDim2.new(1, -128, 0, 60),
+    TextColor3 = COLOR.textSecondary,
+    TextSize = 15,
+    TextWrapped = true,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    ZIndex = 7,
+})
+
+local criticalWarning = create("Frame", {
+    BackgroundColor3 = COLOR.redDeep,
+    BorderSizePixel = 0,
+    LayoutOrder = 2,
+    Size = UDim2.new(1, 0, 0, 152),
+    ZIndex = 5,
+}, content)
+corner(criticalWarning, 13)
+stroke(criticalWarning, COLOR.red, 0.38, 1)
+
+local function criticalRow(parent, y)
+    local holder = create("Frame", {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 18, 0, y),
+        Size = UDim2.new(1, -36, 0, 32),
+        ZIndex = 6,
+    }, parent)
+
+    local icon = create("Frame", {
+        BackgroundColor3 = COLOR.red,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0.5, -12),
+        Size = UDim2.fromOffset(24, 24),
+        ZIndex = 7,
+    }, holder)
+    corner(icon, 7)
+    label(icon, {
+        FontFace = FONT.extraBold,
+        Size = UDim2.fromScale(1, 1),
+        Text = "×",
+        TextColor3 = COLOR.backdrop,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 8,
+    })
+
+    local text = label(holder, {
+        FontFace = FONT.extraBold,
+        Position = UDim2.fromOffset(36, 0),
+        Size = UDim2.new(1, -36, 1, 0),
+        TextColor3 = COLOR.text,
+        TextSize = 15,
+        TextWrapped = true,
+        ZIndex = 7,
+    })
+
+    return holder, text
+end
+
+local freezeRow, freezeWarningText = criticalRow(criticalWarning, 14)
+local weaponRow, weaponWarningText = criticalRow(criticalWarning, 50)
+
+local lossPanel = create("Frame", {
+    BackgroundColor3 = COLOR.red,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 18, 0, 94),
+    Size = UDim2.new(1, -36, 0, 42),
+    ZIndex = 6,
+}, criticalWarning)
+corner(lossPanel, 9)
+local lossWarningText = label(lossPanel, {
+    FontFace = FONT.extraBold,
+    Position = UDim2.fromOffset(12, 0),
+    Size = UDim2.new(1, -24, 1, 0),
+    TextColor3 = COLOR.backdrop,
+    TextSize = 14,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 7,
+})
+
+local why = create("Frame", {
+    BackgroundColor3 = COLOR.soft,
+    BorderSizePixel = 0,
+    LayoutOrder = 3,
+    Size = UDim2.new(1, 0, 0, 82),
+    ZIndex = 5,
+}, content)
+corner(why, 12)
+stroke(why, COLOR.borderSoft, 0, 1)
+local infoIcon = create("Frame", {
+    BackgroundColor3 = COLOR.tealDeep,
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(18, 20),
+    Size = UDim2.fromOffset(40, 40),
+    ZIndex = 6,
+}, why)
+corner(infoIcon, 10)
+label(infoIcon, {
+    FontFace = FONT.bold,
+    Size = UDim2.fromScale(1, 1),
+    Text = "i",
+    TextColor3 = COLOR.teal,
+    TextSize = 17,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 7,
+})
+local whyTitle = label(why, {
+    FontFace = FONT.bold,
+    Position = UDim2.fromOffset(72, 16),
+    Size = UDim2.new(1, -92, 0, 22),
+    TextSize = 14,
+    ZIndex = 6,
+})
+local whyText = label(why, {
+    LineHeight = 1.2,
+    Position = UDim2.fromOffset(72, 39),
+    Size = UDim2.new(1, -92, 0, 34),
+    TextColor3 = COLOR.textMuted,
+    TextSize = 13,
+    TextWrapped = true,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    ZIndex = 6,
+})
+
+local columns = create("Frame", {
+    BackgroundTransparency = 1,
+    LayoutOrder = 4,
+    Size = UDim2.new(1, 0, 0, 400),
+    ZIndex = 5,
+}, content)
+
+local function listCard(parent, accentColor, iconText)
+    local card = create("Frame", {
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundColor3 = COLOR.elevated,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.5, -7, 0, 0),
+        ZIndex = 6,
+    }, parent)
+    corner(card, 13)
+    stroke(card, COLOR.border, 0, 1)
+    padding(card, 18, 18, 18, 18)
+    local cardLayout = create("UIListLayout", {
+        Padding = UDim.new(0, 0),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, card)
+
+    local heading = create("Frame", {
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+        Size = UDim2.new(1, 0, 0, 58),
+        ZIndex = 7,
+    }, card)
+    local icon = create("Frame", {
+        BackgroundColor3 = accentColor == COLOR.red and COLOR.redDeep or COLOR.tealDeep,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 1),
+        Size = UDim2.fromOffset(38, 38),
+        ZIndex = 8,
+    }, heading)
+    corner(icon, 10)
+    label(icon, {
+        FontFace = FONT.bold,
+        Size = UDim2.fromScale(1, 1),
+        Text = iconText,
+        TextColor3 = accentColor,
+        TextSize = iconText == "!" and 18 or 15,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 9,
+    })
+    local title = label(heading, {
+        FontFace = FONT.bold,
+        Position = UDim2.fromOffset(50, 0),
+        Size = UDim2.new(1, -50, 0, 20),
+        TextSize = 15,
+        ZIndex = 8,
+    })
+    local subtitle = label(heading, {
+        Position = UDim2.fromOffset(50, 21),
+        Size = UDim2.new(1, -50, 0, 18),
+        TextColor3 = COLOR.textMuted,
+        TextSize = 12,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 8,
+    })
+
+    return card, title, subtitle, cardLayout
+end
+
+local signsCard, signsTitle, signsSubtitle, signsLayout = listCard(columns, COLOR.red, "!")
+local actionsCard, actionsTitle, actionsSubtitle, actionsLayout = listCard(columns, COLOR.teal, "✓")
+local signsRows = {}
+local actionRows = {}
+
+local function row(card, order, accent, markerText)
+    local holder = create("Frame", {
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        LayoutOrder = order + 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        ZIndex = 7,
+    }, card)
+
+    create("Frame", {
+        BackgroundColor3 = COLOR.borderSoft,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 1),
+        ZIndex = 8,
+    }, holder)
+
+    local marker = create("Frame", {
+        BackgroundColor3 = accent == COLOR.red and COLOR.redDeep or COLOR.tealDeep,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 13),
+        Size = UDim2.fromOffset(24, 24),
+        ZIndex = 8,
+    }, holder)
+    corner(marker, 7)
+    label(marker, {
+        FontFace = FONT.bold,
+        Size = UDim2.fromScale(1, 1),
+        Text = markerText,
+        TextColor3 = accent,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 9,
+    })
+
+    local text = label(holder, {
+        AutomaticSize = Enum.AutomaticSize.Y,
+        LineHeight = 1.2,
+        Position = UDim2.fromOffset(36, 14),
+        Size = UDim2.new(1, -36, 0, 0),
+        TextColor3 = COLOR.textSecondary,
+        TextSize = 13,
+        TextWrapped = true,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        ZIndex = 8,
+    })
+
+    local function resize()
+        holder.Size = UDim2.new(1, 0, 0, math.max(50, text.AbsoluteSize.Y + 28))
+    end
+    connect(text:GetPropertyChangedSignal("AbsoluteSize"), resize)
+    task.defer(resize)
+
+    return text
+end
+
+
+for index = 1, 5 do
+    signsRows[index] = row(signsCard, index, COLOR.red, "!")
+end
+for index = 1, 5 do
+    actionRows[index] = row(actionsCard, index, COLOR.teal, tostring(index))
+end
+
+local currentLanguage = "en"
+local compact = false
+local copyToken = 0
+
+local function resizeColumns()
+    if destroyed then
+        return
+    end
+
+    local width = columns.AbsoluteSize.X
+    local stack = width < 660
+    local signsHeight = math.max(94, signsLayout.AbsoluteContentSize.Y + 36)
+    local actionsHeight = math.max(94, actionsLayout.AbsoluteContentSize.Y + 36)
+
+    signsCard.AutomaticSize = Enum.AutomaticSize.None
+    actionsCard.AutomaticSize = Enum.AutomaticSize.None
+
+    if stack then
+        signsCard.Position = UDim2.fromOffset(0, 0)
+        signsCard.Size = UDim2.new(1, 0, 0, signsHeight)
+        actionsCard.Position = UDim2.fromOffset(0, signsHeight + 14)
+        actionsCard.Size = UDim2.new(1, 0, 0, actionsHeight)
+        columns.Size = UDim2.new(1, 0, 0, signsHeight + actionsHeight + 14)
+    else
+        local equalHeight = math.max(signsHeight, actionsHeight)
+        signsCard.Position = UDim2.fromOffset(0, 0)
+        signsCard.Size = UDim2.new(0.5, -7, 0, equalHeight)
+        actionsCard.Position = UDim2.new(0.5, 7, 0, 0)
+        actionsCard.Size = UDim2.new(0.5, -7, 0, equalHeight)
+        columns.Size = UDim2.new(1, 0, 0, equalHeight)
+    end
+end
+
+local function responsiveLayout()
+    if destroyed then
+        return
+    end
+
+    compact = window.AbsoluteSize.X < 590
+
+    if compact then
+        header.Size = UDim2.new(1, 0, 0, 112)
+        brand.Position = UDim2.fromOffset(18, 12)
+        safetyPill.Visible = false
+        closeButtonTop.Position = UDim2.new(1, -50, 0, 12)
+
+        languageBar.Position = UDim2.new(0, 18, 0, 61)
+        languageBar.Size = UDim2.new(1, -36, 0, 34)
+        for code, data in pairs(languageButtons) do
+            data.text.Text = COPY[code].languageShort
+        end
+
+        body.Position = UDim2.new(0, 0, 0, 112)
+        body.Size = UDim2.new(1, 0, 1, -202)
+        footer.Position = UDim2.new(0, 0, 1, -90)
+        footer.Size = UDim2.new(1, 0, 0, 90)
+
+        safeIcon.Visible = false
+        safeTitle.Visible = false
+        safeText.Visible = false
+        copyButton.Position = UDim2.new(0, 16, 0.5, -20)
+        copyButton.Size = UDim2.new(0.42, -4, 0, 40)
+        closeButton.Position = UDim2.new(0.42, 8, 0.5, -20)
+        closeButton.Size = UDim2.new(0.58, -24, 0, 40)
+
+        content.Position = UDim2.fromOffset(16, 0)
+        content.Size = UDim2.new(1, -35, 0, 0)
+        hero.Size = UDim2.new(1, 0, 0, 244)
+        alertIcon.Position = UDim2.fromOffset(18, 19)
+        alertIcon.Size = UDim2.fromOffset(44, 44)
+        badge.Position = UDim2.fromOffset(72, 19)
+        heroTitle.Position = UDim2.fromOffset(18, 78)
+        heroTitle.Size = UDim2.new(1, -36, 0, 62)
+        heroTitle.TextSize = 25
+        heroIntro.Position = UDim2.fromOffset(18, 143)
+        heroIntro.Size = UDim2.new(1, -36, 0, 82)
+
+        criticalWarning.Size = UDim2.new(1, 0, 0, 190)
+        freezeRow.Position = UDim2.new(0, 14, 0, 10)
+        freezeRow.Size = UDim2.new(1, -28, 0, 44)
+        weaponRow.Position = UDim2.new(0, 14, 0, 56)
+        weaponRow.Size = UDim2.new(1, -28, 0, 44)
+        lossPanel.Position = UDim2.new(0, 14, 0, 110)
+        lossPanel.Size = UDim2.new(1, -28, 0, 64)
+
+        why.Size = UDim2.new(1, 0, 0, 110)
+        infoIcon.Position = UDim2.fromOffset(15, 18)
+        whyTitle.Position = UDim2.fromOffset(67, 16)
+        whyTitle.Size = UDim2.new(1, -82, 0, 36)
+        whyText.Position = UDim2.fromOffset(67, 50)
+        whyText.Size = UDim2.new(1, -82, 0, 50)
+    else
+        header.Size = UDim2.new(1, 0, 0, 70)
+        brand.Position = UDim2.new(0, 24, 0.5, -16)
+        safetyPill.Visible = true
+        closeButtonTop.Position = UDim2.new(1, -48, 0.5, -16)
+
+        languageBar.Position = UDim2.new(1, -352, 0.5, -17)
+        languageBar.Size = UDim2.fromOffset(292, 34)
+        for code, data in pairs(languageButtons) do
+            data.text.Text = COPY[code].language
+        end
+
+        body.Position = UDim2.new(0, 0, 0, 70)
+        body.Size = UDim2.new(1, 0, 1, -146)
+        footer.Position = UDim2.new(0, 0, 1, -76)
+        footer.Size = UDim2.new(1, 0, 0, 76)
+
+        safeIcon.Visible = true
+        safeTitle.Visible = true
+        safeText.Visible = true
+        copyButton.Position = UDim2.new(1, -406, 0.5, -19)
+        copyButton.Size = UDim2.fromOffset(174, 38)
+        closeButton.Position = UDim2.new(1, -220, 0.5, -19)
+        closeButton.Size = UDim2.fromOffset(196, 38)
+
+        content.Position = UDim2.fromOffset(24, 0)
+        content.Size = UDim2.new(1, -51, 0, 0)
+        hero.Size = UDim2.new(1, 0, 0, 184)
+        alertIcon.Position = UDim2.fromOffset(24, 26)
+        alertIcon.Size = UDim2.fromOffset(54, 54)
+        badge.Position = UDim2.fromOffset(96, 25)
+        heroTitle.Position = UDim2.fromOffset(96, 54)
+        heroTitle.Size = UDim2.new(1, -124, 0, 42)
+        heroTitle.TextSize = 29
+        heroIntro.Position = UDim2.fromOffset(96, 100)
+        heroIntro.Size = UDim2.new(1, -128, 0, 60)
+
+        criticalWarning.Size = UDim2.new(1, 0, 0, 152)
+        freezeRow.Position = UDim2.new(0, 18, 0, 14)
+        freezeRow.Size = UDim2.new(1, -36, 0, 32)
+        weaponRow.Position = UDim2.new(0, 18, 0, 50)
+        weaponRow.Size = UDim2.new(1, -36, 0, 32)
+        lossPanel.Position = UDim2.new(0, 18, 0, 94)
+        lossPanel.Size = UDim2.new(1, -36, 0, 42)
+
+        why.Size = UDim2.new(1, 0, 0, 82)
+        infoIcon.Position = UDim2.fromOffset(18, 20)
+        whyTitle.Position = UDim2.fromOffset(72, 16)
+        whyTitle.Size = UDim2.new(1, -92, 0, 22)
+        whyText.Position = UDim2.fromOffset(72, 39)
+        whyText.Size = UDim2.new(1, -92, 0, 34)
+    end
+
+    task.defer(resizeColumns)
+end
+
+local function setLanguage(code)
+    currentLanguage = code
+    local text = COPY[code]
+
+    safetyPillText.Text = text.safetyCenter
+    badgeText.Text = text.badge
+    heroTitle.Text = text.title
+    heroIntro.Text = text.intro
+    freezeWarningText.Text = text.freezeWarning
+    weaponWarningText.Text = text.weaponWarning
+    lossWarningText.Text = text.lossWarning
+    whyTitle.Text = text.whyTitle
+    whyText.Text = text.whyText
+    signsTitle.Text = text.signsTitle
+    signsSubtitle.Text = text.signsSubtitle
+    actionsTitle.Text = text.actionsTitle
+    actionsSubtitle.Text = text.actionsSubtitle
+    safeTitle.Text = text.safe
+    safeText.Text = text.safeText
+    copyButton.Text = text.copy
+    closeButton.Text = text.close
+    heartTitle.Text = text.heartTitle
+    closeButtonTop:SetAttribute("AccessibleLabel", text.closeLabel)
+
+    for index, rowText in ipairs(signsRows) do
+        rowText.Text = text.signs[index]
+    end
+    for index, rowText in ipairs(actionRows) do
+        rowText.Text = text.actions[index]
+    end
+
+    for language, data in pairs(languageButtons) do
+        local selected = language == code
+        data.button.BackgroundColor3 = selected and COLOR.tealDeep or COLOR.soft
+        data.outline.Color = selected and COLOR.teal or COLOR.borderSoft
+        data.outline.Transparency = selected and 0.35 or 1
+        data.text.TextColor3 = selected and COLOR.teal or COLOR.textMuted
+        data.text.Text = compact and COPY[language].languageShort or COPY[language].language
+    end
+
+    task.defer(function()
+        body.CanvasPosition = Vector2.new(0, 0)
+        resizeColumns()
+        task.defer(resizeColumns)
+    end)
+end
+
+local function hover(button, resting, active)
+    connect(button.MouseEnter, function()
+        if not destroyed then
+            TweenService:Create(button, TweenInfo.new(0.12), { BackgroundColor3 = active }):Play()
+        end
+    end)
+    connect(button.MouseLeave, function()
+        if not destroyed then
+            TweenService:Create(button, TweenInfo.new(0.12), { BackgroundColor3 = resting }):Play()
+        end
+    end)
+end
+
+hover(copyButton, COLOR.elevated, COLOR.elevatedHover)
+hover(closeButton, COLOR.teal, COLOR.tealBright)
+hover(closeButtonTop, COLOR.elevated, COLOR.elevatedHover)
+
+for code, data in pairs(languageButtons) do
+    connect(data.button.Activated, function()
+        setLanguage(code)
+    end)
+end
+
+local function cleanup()
+    if destroyed then
+        return
+    end
+    destroyed = true
+
+    for _, connection in ipairs(connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+    table.clear(connections)
+
+    if screenGui and screenGui.Parent then
+        screenGui:Destroy()
+    end
+    if environment.__BOBLOSCRIPT_SAFETY_CLEANUP == cleanup then
+        environment.__BOBLOSCRIPT_SAFETY_CLEANUP = nil
+    end
+end
+
+environment.__BOBLOSCRIPT_SAFETY_CLEANUP = cleanup
+
+local function closeSafely()
+    if destroyed or overlay:GetAttribute("Closing") then
+        return
+    end
+    overlay:SetAttribute("Closing", true)
+
+    window.Visible = false
+    TweenService:Create(
+        overlay,
+        TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { BackgroundTransparency = 1 }
+    ):Play()
+
+    task.delay(0.08, function()
+        if destroyed then
+            return
+        end
+
+        positionHeartToast()
+        heartToast.Visible = true
+
+        TweenService:Create(
+            heartGlowOuter,
+            TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { BackgroundTransparency = 0.72 }
+        ):Play()
+        TweenService:Create(
+            heartGlowInner,
+            TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { BackgroundTransparency = 0.08 }
+        ):Play()
+        TweenService:Create(
+            heartGlyph,
+            TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+            { TextTransparency = 0 }
+        ):Play()
+        TweenService:Create(
+            heartTitle,
+            TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { TextTransparency = 0 }
+        ):Play()
+        TweenService:Create(
+            heartBrand,
+            TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { TextTransparency = 0 }
+        ):Play()
+        TweenService:Create(heartLineLeft, TweenInfo.new(0.32), { BackgroundTransparency = 0.15 }):Play()
+        TweenService:Create(heartLineRight, TweenInfo.new(0.32), { BackgroundTransparency = 0.15 }):Play()
+        for _, decoration in ipairs(heartDecorations) do
+            TweenService:Create(decoration, TweenInfo.new(0.3), { BackgroundTransparency = 0.08 }):Play()
+        end
+
+        heartPulse.Position = UDim2.new(0.5, -43, 0, 23)
+        heartPulse.Size = UDim2.fromOffset(86, 86)
+        heartPulseStroke.Transparency = 0.25
+        TweenService:Create(
+            heartPulse,
+            TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {
+                Position = UDim2.new(0.5, -70, 0, -4),
+                Size = UDim2.fromOffset(140, 140),
+            }
+        ):Play()
+        TweenService:Create(
+            heartPulseStroke,
+            TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { Transparency = 1 }
+        ):Play()
+    end)
+
+    task.delay(3.8, function()
+        if destroyed then
+            return
+        end
+
+        TweenService:Create(heartGlowOuter, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+        TweenService:Create(heartGlowInner, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+        TweenService:Create(heartGlyph, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
+        TweenService:Create(heartTitle, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
+        TweenService:Create(heartBrand, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
+        TweenService:Create(heartLineLeft, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+        TweenService:Create(heartLineRight, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+        for _, decoration in ipairs(heartDecorations) do
+            TweenService:Create(decoration, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+        end
+    end)
+
+    task.delay(4.05, cleanup)
+end
+
+connect(closeButton.Activated, closeSafely)
+connect(closeButtonTop.Activated, closeSafely)
+
+connect(copyButton.Activated, function()
+    local copied = false
+    if type(setclipboard) == "function" then
+        copied = pcall(setclipboard, SITE_URL)
+    elseif type(toclipboard) == "function" then
+        copied = pcall(toclipboard, SITE_URL)
+    end
+
+    copyToken = copyToken + 1
+    local token = copyToken
+    copyButton.Text = copied and COPY[currentLanguage].copied or COPY[currentLanguage].copyFailed
+
+    task.delay(2.2, function()
+        if not destroyed and token == copyToken then
+            copyButton.Text = COPY[currentLanguage].copy
+        end
+    end)
+end)
+
+connect(UserInputService.InputBegan, function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.Escape then
+        closeSafely()
+    end
+end)
+
+local dragging = false
+local dragInput
+local dragStart
+local windowStart
+
+connect(header.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        windowStart = window.Position
+
+        connect(input.Changed, function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+connect(header.InputChanged, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+connect(UserInputService.InputChanged, function(input)
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        window.Position = UDim2.new(
+            windowStart.X.Scale,
+            windowStart.X.Offset + delta.X,
+            windowStart.Y.Scale,
+            windowStart.Y.Offset + delta.Y
+        )
+    end
+end)
+
+connect(window:GetPropertyChangedSignal("AbsoluteSize"), responsiveLayout)
+connect(overlay:GetPropertyChangedSignal("AbsoluteSize"), function()
+    snapWindowToPixels()
+    responsiveLayout()
+    if heartToast.Visible then
+        positionHeartToast()
+    end
+end)
+connect(columns:GetPropertyChangedSignal("AbsoluteSize"), resizeColumns)
+connect(signsCard:GetPropertyChangedSignal("AbsoluteSize"), resizeColumns)
+connect(actionsCard:GetPropertyChangedSignal("AbsoluteSize"), resizeColumns)
+connect(signsLayout:GetPropertyChangedSignal("AbsoluteContentSize"), resizeColumns)
+connect(actionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"), resizeColumns)
+
+task.defer(function()
+    if destroyed then
+        return
+    end
+
+    snapWindowToPixels()
+    responsiveLayout()
+    setLanguage("en")
+    window.Visible = true
+
+    -- Only the flat backdrop fades. Text and controls are never rasterized.
+    TweenService:Create(
+        overlay,
+        TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { BackgroundTransparency = 0.08 }
+    ):Play()
+end)
