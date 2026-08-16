@@ -1,0 +1,309 @@
+--[[
+    Age Evolution Tycoon Script - FINAL CLEAN VERSION
+    Library: Fluent v2 (bobloscript fork)
+    Removed: Upgrades tab (not working)
+    Working: Money collection, Rebirth, Nuke, Daily Rewards
+--]]
+
+local Fluent = loadstring(game:HttpGet("https://github.com/bobloscript/fluent_v2/releases/latest/download/main.lua"))()
+
+if not Fluent then
+    error("Failed to load Fluent library")
+end
+
+-- ===== CORE VARIABLES =====
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
+
+local function getRootPart()
+    local char = Player.Character
+    if char then
+        return char:FindFirstChild("HumanoidRootPart")
+    end
+    return nil
+end
+
+-- ===== REMOTE EVENTS =====
+local RemoteEvents = ReplicatedStorage:FindFirstChild("RemoteEvents") or ReplicatedStorage
+local BuyRebirth = RemoteEvents:FindFirstChild("BuyRebirth")
+local BuyNukeWithMoney = RemoteEvents:FindFirstChild("BuyNukeWithMoney")
+local BuyStarterPackEvent = RemoteEvents:FindFirstChild("BuyStarterPackEvent")
+local ClaimDailyReward = RemoteEvents:FindFirstChild("ClaimDailyReward")
+
+-- ===== CREATE WINDOW =====
+local Window = Fluent:CreateWindow({
+    Title = "Age Evolution Tycoon 🗿",
+    SubTitle = "Auto-Farm Script v2.0",
+    Size = UDim2.fromOffset(600, 500),
+    Acrylic = false,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+-- Tabs (Upgrades removed)
+local FarmTab = Window:AddTab({ Title = "Farm", Icon = "coins" })
+local RebirthTab = Window:AddTab({ Title = "Rebirth", Icon = "refresh" })
+local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
+
+-- ===== STATE VARIABLES =====
+local connections = {}
+
+-- ===== CORE FUNCTIONS =====
+
+-- Collect from collectors
+local function CollectMoney()
+    local root = getRootPart()
+    if not root then return end
+    
+    local plots = Workspace:FindFirstChild("Plots")
+    if not plots then return end
+    
+    for _, plot in ipairs(plots:GetChildren()) do
+        local collectorParts = plot:FindFirstChild("CollectorParts")
+        if collectorParts then
+            for _, part in ipairs(collectorParts:GetChildren()) do
+                if part.Name == "Collector" then
+                    local ti = part:FindFirstChild("TouchInterest")
+                    if ti then
+                        firetouchinterest(part, root, 0)
+                        task.wait(0.02)
+                        firetouchinterest(part, root, 1)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Collect Money Crates from map
+local function CollectDrops()
+    local root = getRootPart()
+    if not root then return end
+    
+    for _, part in ipairs(Workspace:GetChildren()) do
+        if part:IsA("Part") and string.find(part.Name, "Money Crate") then
+            local ti = part:FindFirstChild("TouchInterest")
+            if ti then
+                firetouchinterest(part, root, 0)
+                task.wait(0.02)
+                firetouchinterest(part, root, 1)
+            end
+        end
+    end
+end
+
+-- Rebirth
+local function DoRebirth()
+    if BuyRebirth then
+        pcall(function()
+            BuyRebirth:FireServer()
+        end)
+    end
+end
+
+-- Activate Nuke
+local function ActivateNuke()
+    if BuyNukeWithMoney then
+        pcall(function()
+            BuyNukeWithMoney:FireServer()
+        end)
+    end
+    
+    -- Also try clicking GUI button
+    local playerGui = Player.PlayerGui
+    if playerGui then
+        local main = playerGui:FindFirstChild("Main")
+        if main then
+            local guiFrames = main:FindFirstChild("GuiFrames")
+            if guiFrames then
+                local troll = guiFrames:FindFirstChild("Troll")
+                if troll then
+                    local buttons = troll:FindFirstChild("Buttons")
+                    if buttons then
+                        local nukeButton = buttons:FindFirstChild("NukeForMoney")
+                        if nukeButton then
+                            nukeButton:Click()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Claim daily reward
+local function ClaimDaily()
+    if ClaimDailyReward then
+        pcall(function()
+            ClaimDailyReward:FireServer()
+        end)
+    end
+    
+    local playerGui = Player.PlayerGui
+    if playerGui then
+        local main = playerGui:FindFirstChild("Main")
+        if main then
+            local guiFrames = main:FindFirstChild("GuiFrames")
+            if guiFrames then
+                local dailyReward = guiFrames:FindFirstChild("DailyReward")
+                if dailyReward then
+                    local claimButton = dailyReward:FindFirstChild("Claim")
+                    if claimButton then
+                        claimButton:Click()
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ===== FILL TABS =====
+
+-- === FARM TAB ===
+FarmTab:AddSection("Auto Collection")
+
+FarmTab:AddToggle("CollectorToggle", {
+    Title = "Collect from collectors",
+    Description = "Automatically collects money from your collectors",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            connections.Collector = RunService.Heartbeat:Connect(CollectMoney)
+            Fluent:Notify({ Title = "Farm", Content = "Collection activated!", Duration = 3 })
+        else
+            if connections.Collector then
+                connections.Collector:Disconnect()
+                connections.Collector = nil
+                Fluent:Notify({ Title = "Farm", Content = "Collection stopped", Duration = 2 })
+            end
+        end
+    end
+})
+
+FarmTab:AddToggle("DropToggle", {
+    Title = "Collect map drops",
+    Description = "Collects all Money Crates on the map",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            connections.Drop = RunService.Heartbeat:Connect(CollectDrops)
+        else
+            if connections.Drop then
+                connections.Drop:Disconnect()
+                connections.Drop = nil
+            end
+        end
+    end
+})
+
+FarmTab:AddButton({
+    Title = "Collect all now",
+    Description = "One-time collection of all money on the map",
+    Callback = function()
+        CollectMoney()
+        CollectDrops()
+        Fluent:Notify({ Title = "Collection", Content = "Money collected!", Duration = 2 })
+    end
+})
+
+-- === REBIRTH TAB ===
+RebirthTab:AddSection("Rebirth Management")
+
+RebirthTab:AddToggle("RebirthToggle", {
+    Title = "Auto rebirth",
+    Description = "Automatically rebirthes when available",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            connections.Rebirth = RunService.Heartbeat:Connect(DoRebirth)
+            Fluent:Notify({ Title = "Rebirth", Content = "Auto-rebirth activated!", Duration = 3 })
+        else
+            if connections.Rebirth then
+                connections.Rebirth:Disconnect()
+                connections.Rebirth = nil
+                Fluent:Notify({ Title = "Rebirth", Content = "Auto-rebirth stopped", Duration = 2 })
+            end
+        end
+    end
+})
+
+RebirthTab:AddButton({
+    Title = "Rebirth now",
+    Description = "One-time rebirth",
+    Callback = function()
+        DoRebirth()
+        Fluent:Notify({ Title = "Rebirth", Content = "Rebirth attempt!", Duration = 3 })
+    end
+})
+
+RebirthTab:AddButton({
+    Title = "Activate Nuke (1B $)",
+    Description = "Uses Nuke Server with 1 billion money",
+    Callback = function()
+        ActivateNuke()
+        Fluent:Notify({ Title = "NUKE", Content = "Nuke activation attempt!", Duration = 3 })
+    end
+})
+
+-- === SETTINGS TAB ===
+SettingsTab:AddSection("Script Information")
+
+SettingsTab:AddParagraph({
+    Title = "Age Evolution Tycoon Script",
+    Content = "Version: 2.0 (Final)\n\nWorking Features:\n✅ Auto money collection\n✅ Auto rebirth\n✅ Nuke activation\n✅ Daily reward claim\n\n❌ Upgrades: removed (not working)"
+})
+
+SettingsTab:AddSection("Bonus Actions")
+
+SettingsTab:AddButton({
+    Title = "Claim Daily Reward",
+    Description = "Attempts to claim the daily bonus",
+    Callback = function()
+        ClaimDaily()
+        Fluent:Notify({ Title = "Daily Reward", Content = "Claim attempt!", Duration = 3 })
+    end
+})
+
+SettingsTab:AddButton({
+    Title = "Buy Starter Pack",
+    Description = "Purchases the starter pack",
+    Callback = function()
+        if BuyStarterPackEvent then
+            pcall(function()
+                BuyStarterPackEvent:FireServer()
+            end)
+        end
+        Fluent:Notify({ Title = "Starter Pack", Content = "Purchase attempt!", Duration = 3 })
+    end
+})
+
+SettingsTab:AddSection("GUI Control")
+
+SettingsTab:AddButton({
+    Title = "Hide GUI",
+    Description = "Minimizes the window (press Ctrl to restore)",
+    Callback = function()
+        Window:Minimize()
+    end
+})
+
+SettingsTab:AddButton({
+    Title = "Unload Script",
+    Description = "Completely destroys the interface and stops everything",
+    Callback = function()
+        Fluent:Destroy()
+    end
+})
+
+-- ===== NOTIFICATIONS =====
+Fluent:Notify({
+    Title = "✅ Script loaded",
+    Content = "Press Ctrl to open the GUI",
+    Duration = 5
+})
+
+print("Age Evolution Tycoon Script loaded (Final version)!")
+print("Press Ctrl to open the GUI")
