@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.9.1-beta.1 - generated bundle, do not edit.
+	BobloUI v0.9.2-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/robscript/boblo-ui
-	Built: 2026-08-17T05:49:31.644Z
+	Built: 2026-08-17T05:58:59.119Z
 	Modules: 50
 ]]
 local __modules = {}
@@ -79,38 +79,40 @@ end
 
 function Base:_measure()
 	local t=self._window.Tokens
-	if self._layoutStyle=="Stacked" then return t:Get("ControlHeight") + 34 + (self.Description and 16 or 0) end
-	return t:Get("ControlHeight") + (self.Description and 15 or 0)
+	if self._layoutStyle=="Stacked" then return t:Get("ControlHeight") + 30 + (self.Description and 15 or 0) end
+	return t:Get("ControlHeight") + (self.Description and 14 or 0)
 end
 
 function Base:_mount()
 	if self._mounted or self._destroyed then return end; self._mounted=true
 	local w=self._window; local t=w.Tokens; local h=self:_measure(); local pad=t:Get("ControlPadding")
-	self._root=Create.New("CanvasGroup",{Name=self.Type.."_"..(self.Id or "Anonymous"),Size=UDim2.new(1,0,0,h),BackgroundTransparency=0,BorderSizePixel=0,LayoutOrder=self._order or 0,Parent=self._section._content}); self._janitor:Add(self._root)
-	Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("ControlRadius")),Parent=self._root}); w:_bind(self._root,{BackgroundColor3="Control"})
+	self._root=Create.New("CanvasGroup",{Name=self.Type.."_"..(self.Id or "Anonymous"),Size=UDim2.new(1,0,0,h),BackgroundTransparency=1,BorderSizePixel=0,LayoutOrder=self._order or 0,Parent=self._section._content}); self._janitor:Add(self._root)
+	Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("ControlRadius")),Parent=self._root}); w:_bind(self._root,{BackgroundColor3="ControlHover"})
+	self._separator=Create.New("Frame",{Name="Separator",Size=UDim2.new(1,-pad*2,0,1),Position=UDim2.new(0,pad,1,-1),BorderSizePixel=0,BackgroundTransparency=0.58,Parent=self._root}); w:_bind(self._separator,{BackgroundColor3="BorderSubtle"})
 
-	local titleWidth=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-70,0,t:Get("ControlHeight")) else UDim2.new(0.57,-pad,0,t:Get("ControlHeight"))
+	local titleWidth=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76,0,t:Get("ControlHeight")) else UDim2.new(0.54,-pad,0,t:Get("ControlHeight"))
 	self._titleLabel=Create.New("TextLabel",{Size=titleWidth,Position=UDim2.fromOffset(pad,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Title),Parent=self._root}); w:_bind(self._titleLabel,{TextColor3="Text"})
 	if self.Description then
-		self._descLabel=Create.New("TextLabel",{Size=UDim2.new(if self._layoutStyle=="Stacked" then 1 else 0.65,-pad*2,0,16),Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-9),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Description),Parent=self._root}); w:_bind(self._descLabel,{TextColor3="TextTertiary"})
+		self._descLabel=Create.New("TextLabel",{Size=UDim2.new(if self._layoutStyle=="Stacked" then 1 else 0.68,-pad*2,0,15),Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-10),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Description),Parent=self._root}); w:_bind(self._descLabel,{TextColor3="TextTertiary"})
 	end
 	if self._layoutStyle=="Stacked" then
-		local y=t:Get("ControlHeight")+(self.Description and 12 or 0)
+		local y=t:Get("ControlHeight")+(self.Description and 11 or 0)
 		self._valueHost=Create.New("Frame",{Size=UDim2.new(1,-pad*2,0,30),Position=UDim2.fromOffset(pad,y),BackgroundTransparency=1,Parent=self._root})
 	else
-		self._valueHost=Create.New("Frame",{Size=UDim2.new(0.43,-pad,0,t:Get("ControlHeight")),Position=UDim2.new(0.57,0,0,0),BackgroundTransparency=1,Parent=self._root})
+		self._valueHost=Create.New("Frame",{Size=UDim2.new(0.46,-pad,0,t:Get("ControlHeight")),Position=UDim2.new(0.54,0,0,0),BackgroundTransparency=1,Parent=self._root})
 	end
 	if self._mountValue then self:_mountValue(self._valueHost) end
 
 	self._janitor:Add(self._root.MouseEnter:Connect(function() self:_applyHoverVisual(true) end))
 	self._janitor:Add(self._root.MouseLeave:Connect(function() self:_applyHoverVisual(false) end))
 	if w.Interactions and (self._tooltip or self._contextMenu or self.Id) then self._janitor:Add(w.Interactions:Attach(self,self._root,self._tooltip,self._contextMenu)) end
-	self:_applyVisible(); self:_applyDisabled(); self:_render(self:GetValue())
+	self:_applyVisible(); self:_applyDisabled(); self:_render(self:GetValue()); self._section:_refreshSeparators()
 end
 
 function Base:_applyHoverVisual(hover)
-	if not self._root or self._disabled then return end
-	self._root.BackgroundColor3=self._window.Theme:Get(hover and "ControlHover" or "Control")
+	if not self._root then return end
+	self._root.BackgroundColor3=self._window.Theme:Get("ControlHover")
+	self._root.BackgroundTransparency=if hover and not self._disabled then 0.48 else 1
 end
 function Base:_resolve(v) return self._window.Locale and self._window.Locale:Resolve(v) or v end
 function Base:_refreshText()
@@ -121,11 +123,12 @@ end
 function Base:_applyTokens()
 	if not self._root then return end; local t=self._window.Tokens; local h=self:_measure(); local pad=t:Get("ControlPadding")
 	self._root.Size=UDim2.new(1,0,0,h); local corner=self._root:FindFirstChildOfClass("UICorner"); if corner then corner.CornerRadius=UDim.new(0,t:Get("ControlRadius")) end
-	if self._titleLabel then self._titleLabel.Position=UDim2.fromOffset(pad,0); self._titleLabel.TextSize=t:Get("FontBody"); self._titleLabel.Size=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-70,0,t:Get("ControlHeight")) else UDim2.new(0.57,-pad,0,t:Get("ControlHeight")) end
-	if self._descLabel then self._descLabel.Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-9); self._descLabel.TextSize=t:Get("FontSmall") end
+	if self._titleLabel then self._titleLabel.Position=UDim2.fromOffset(pad,0); self._titleLabel.TextSize=t:Get("FontBody"); self._titleLabel.Size=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76,0,t:Get("ControlHeight")) else UDim2.new(0.54,-pad,0,t:Get("ControlHeight")) end
+	if self._descLabel then self._descLabel.Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-10); self._descLabel.TextSize=t:Get("FontSmall") end
+	if self._separator then self._separator.Size=UDim2.new(1,-pad*2,0,1); self._separator.Position=UDim2.new(0,pad,1,-1) end
 	if self._valueHost then
-		if self._layoutStyle=="Stacked" then self._valueHost.Size=UDim2.new(1,-pad*2,0,30); self._valueHost.Position=UDim2.fromOffset(pad,t:Get("ControlHeight")+(self.Description and 12 or 0))
-		else self._valueHost.Size=UDim2.new(0.43,-pad,0,t:Get("ControlHeight")); self._valueHost.Position=UDim2.new(0.57,0,0,0) end
+		if self._layoutStyle=="Stacked" then self._valueHost.Size=UDim2.new(1,-pad*2,0,30); self._valueHost.Position=UDim2.fromOffset(pad,t:Get("ControlHeight")+(self.Description and 11 or 0))
+		else self._valueHost.Size=UDim2.new(0.46,-pad,0,t:Get("ControlHeight")); self._valueHost.Position=UDim2.new(0.54,0,0,0) end
 	end
 	if self._applyValueTokens then self:_applyValueTokens() end
 end
@@ -138,12 +141,12 @@ end
 function Base:SetTitle(text) self.Title=text; if self._titleLabel then self._titleLabel.Text=self:_resolve(text) end; self._window.Registry:Update(self,{Title=text}); return self end
 function Base:SetDescription(text) self.Description=text; if self._descLabel then self._descLabel.Text=self:_resolve(text or "") end; self._window.Registry:Update(self,{Description=text or ""}); if self._mounted then self:_applyTokens() end; return self end
 function Base:SetKeywords(words) self.Keywords=words or {}; self._window.Registry:Update(self,{Keywords=self.Keywords}); return self end
-function Base:_applyVisible() local visible=self._manualVisible and self._dependencyVisible; if self._root then self._root.Visible=visible end; self._window.Registry:Update(self,{Hidden=not visible}) end
+function Base:_applyVisible() local visible=self._manualVisible and self._dependencyVisible; if self._root then self._root.Visible=visible end; self._window.Registry:Update(self,{Hidden=not visible}); if self._section and self._section._mounted then self._section:_refreshSeparators() end end
 function Base:SetVisible(v) self._manualVisible=v==true; self:_applyVisible(); return self end
 function Base:IsVisible() return self._manualVisible and self._dependencyVisible end
 function Base:_applyDisabled()
 	self._disabled=self._manualDisabled or not self._dependencyEnabled
-	if self._root then self._root.GroupTransparency=if self._disabled then 0.42 else 0; self._root.BackgroundColor3=self._window.Theme:Get("Control") end
+	if self._root then self._root.GroupTransparency=if self._disabled then 0.42 else 0; self:_applyHoverVisual(false) end
 end
 function Base:SetDisabled(v,reason) self._manualDisabled=v==true; self._disabledReason=reason; self:_applyDisabled(); return self end
 function Base:IsDisabled() return self._disabled==true end
@@ -229,7 +232,7 @@ end
 function ColorPicker:_colour(v) return self.Alpha and (type(v)=="table" and v.Color or Color3.new(1,1,1)) or v end
 function ColorPicker:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._triggerStroke=Create.New("UIStroke",{Thickness=1,Transparency=0.15,Parent=self._button}); w:_bind(self._triggerStroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset"})
+	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._triggerStroke=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._button}); w:_bind(self._triggerStroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset"})
 	self._hexLabel=Create.New("TextLabel",{Size=UDim2.new(1,-46,1,0),Position=UDim2.fromOffset(10,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,Parent=self._button}); w:_bind(self._hexLabel,{TextColor3="TextSecondary"})
 	self._swatch=Create.New("Frame",{Size=UDim2.fromOffset(26,20),Position=UDim2.new(1,-8,0.5,0),AnchorPoint=Vector2.new(1,0.5),BorderSizePixel=0,Parent=self._button}); Create.New("UICorner",{CornerRadius=UDim.new(0,6),Parent=self._swatch}); Create.New("UIStroke",{Thickness=1,Color=Color3.new(1,1,1),Transparency=0.72,Parent=self._swatch})
 	self._janitor:Add(self._button.MouseEnter:Connect(function() if not self._popup then self._button.BackgroundColor3=w.Theme:Get("SurfaceHover") end end)); self._janitor:Add(self._button.MouseLeave:Connect(function() if not self._popup then self._button.BackgroundColor3=w.Theme:Get("ControlInset") end end))
@@ -345,7 +348,7 @@ function Dropdown.new(section,options)
 end
 function Dropdown:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.15,Parent=self._button}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset"})
+	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._button}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset"})
 	self._valueLabel=Create.New("TextLabel",{Size=UDim2.new(1,-32,1,0),Position=UDim2.fromOffset(10,0),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text="",Parent=self._button}); w:_bind(self._valueLabel,{TextColor3="Text"})
 	self._arrow=Create.New("TextLabel",{Size=UDim2.fromOffset(24,24),Position=UDim2.new(1,-5,0.5,0),AnchorPoint=Vector2.new(1,0.5),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=15,Text="⌄",Parent=self._button}); w:_bind(self._arrow,{TextColor3="TextTertiary"})
 	self._janitor:Add(self._button.MouseEnter:Connect(function() if not self._popup then self._button.BackgroundColor3=w.Theme:Get("SurfaceHover") end end)); self._janitor:Add(self._button.MouseLeave:Connect(function() if not self._popup then self._button.BackgroundColor3=w.Theme:Get("ControlInset") end end)); self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then if self._popup then self:Close() else self:Open() end end end))
@@ -398,7 +401,7 @@ function Keybind.new(section,options)
 end
 function Keybind:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.15,Parent=self._button}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset",TextColor3="TextSecondary"}); self._janitor:Add(self._button.MouseEnter:Connect(function() self._button.BackgroundColor3=w.Theme:Get("SurfaceHover") end)); self._janitor:Add(self._button.MouseLeave:Connect(function() if not self._capturing then self._button.BackgroundColor3=w.Theme:Get("ControlInset") end end)); self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then self:Capture() end end)); self:_rebind()
+	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._button}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset",TextColor3="TextSecondary"}); self._janitor:Add(self._button.MouseEnter:Connect(function() self._button.BackgroundColor3=w.Theme:Get("SurfaceHover") end)); self._janitor:Add(self._button.MouseLeave:Connect(function() if not self._capturing then self._button.BackgroundColor3=w.Theme:Get("ControlInset") end end)); self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then self:Capture() end end)); self:_rebind()
 end
 function Keybind:_render(v) if type(v)=="table" then self.Mode=v.Mode or self.Mode end; if self._button then self._button.Text=if self._capturing then "Press a key…" else `{keyName(v)}  ·  {self.Mode}`; self._button.BackgroundColor3=self._window.Theme:Get(self._capturing and "AccentSoft" or "ControlInset"); self._stroke.Color=self._window.Theme:Get(self._capturing and "AccentBorder" or "BorderSubtle"); self:_rebind() end end
 function Keybind:_rebind() if self._binding then self._binding:Destroy(); self._binding=nil end; local v=self:GetValue(); if not self._mounted or type(v)~="table" then return end; local key=enumKey(v.Key); if not key then return end; self._binding=self._window.Input:BindKey(self.Id or tostring(self),key,v.Mode or self.Mode,function(active) if self._actionCallback then local ok,err=xpcall(self._actionCallback,debug.traceback,active); if not ok then warn(err) end end end); self._janitor:Add(self._binding,"Destroy","keybinding") end
@@ -475,10 +478,10 @@ function Slider:_normalize(v) v=tonumber(v) or self.Min; v=math.clamp(v,self.Min
 function Slider:SetValue(v,silent) return Base.SetValue(self,self:_normalize(v),silent) end
 function Slider:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._valueBox=Create.New("TextBox",{Size=UDim2.fromOffset(64,24),Position=UDim2.new(1,0,0,-t:Get("ControlHeight")+(self.Description and -5 or 2)),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=false,Text=self:_format(self:GetValue()),Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Center,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=self._valueBox}); w:_bind(self._valueBox,{BackgroundColor3="SurfaceInset",TextColor3="TextSecondary"})
+	self._valueBox=Create.New("TextBox",{Size=UDim2.fromOffset(72,24),Position=UDim2.new(1,0,0,-t:Get("ControlHeight")+(self.Description and -5 or 2)),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,Text=self:_format(self:GetValue()),Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Parent=host}); w:_bind(self._valueBox,{TextColor3="TextSecondary"})
 	self._track=Create.New("Frame",{Size=UDim2.new(1,-4,0,t:Get("SliderTrack")),Position=UDim2.new(0,2,0.5,5),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._track}); w:_bind(self._track,{BackgroundColor3="SurfaceInset"})
 	self._fill=Create.New("Frame",{Size=UDim2.fromScale(0,1),BorderSizePixel=0,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._fill}); w:_bind(self._fill,{BackgroundColor3="Accent"})
-	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(t:Get("SliderKnob"),t:Get("SliderKnob")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,ZIndex=3,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); Create.New("UIStroke",{Thickness=2,Color=Color3.new(1,1,1),Transparency=0.22,Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="Accent"})
+	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(t:Get("SliderKnob"),t:Get("SliderKnob")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,ZIndex=3,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); Create.New("UIStroke",{Thickness=1,Color=Color3.new(1,1,1),Transparency=0.42,Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="Accent"})
 	local hit=Create.New("TextButton",{Size=UDim2.new(1,0,0,30),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,Text="",ZIndex=4,Parent=self._track})
 	self._janitor:Add(hit.InputBegan:Connect(function(i)
 		if self:IsDisabled() then return end; if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end
@@ -504,7 +507,7 @@ local Base=__require("controls/Base")
 local Status=setmetatable({}, {__index=Base}); Status.__index=Status
 local TOKENS={Neutral="TextSecondary",Success="Success",Warning="Warning",Error="Error",Info="Info",Pending="Warning"}
 function Status.new(section,options) local self=setmetatable({},Status); self.Status=options.Status or "Neutral"; self.Pulse=options.Pulse==true; Base.init(self,section,"Status",options,{Stateful=options.Id~=nil,Default=options.Value,Persist=false}); if not options.Id then self._value=options.Value end; return Base.finish(self) end
-function Status:_mountValue(host) local w=self._window; self._dot=Create.New("Frame",{Size=UDim2.fromOffset(8,8),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._dot}); w:_bind(self._dot,{BackgroundColor3=function(palette) return palette[TOK[self.Status] or "TextSecondary"] end}); self._valueLabel=Create.New("TextLabel",{Size=UDim2.new(1,-14,1,0),Position=UDim2.fromOffset(14,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Text="",Parent=host}); w:_bind(self._valueLabel,{TextColor3="TextSecondary"}); self:SetStatus(self.Status); if self.Pulse and w.Motion.Enabled then local tw=w.Motion:Tween(self._dot,TweenInfo.new(0.8,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{BackgroundTransparency=0.65}); if tw then self._janitor:Add(tw) end end end
+function Status:_mountValue(host) local w=self._window; self._dot=Create.New("Frame",{Size=UDim2.fromOffset(8,8),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._dot}); w:_bind(self._dot,{BackgroundColor3=function(palette) return palette[TOKENS[self.Status] or "TextSecondary"] end}); self._valueLabel=Create.New("TextLabel",{Size=UDim2.new(1,-14,1,0),Position=UDim2.fromOffset(14,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Text="",Parent=host}); w:_bind(self._valueLabel,{TextColor3="TextSecondary"}); self:SetStatus(self.Status); if self.Pulse and w.Motion.Enabled then local tw=w.Motion:Tween(self._dot,TweenInfo.new(0.8,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{BackgroundTransparency=0.65}); if tw then self._janitor:Add(tw) end end end
 function Status:_render(v) if self._valueLabel then self._valueLabel.Text=tostring(v or "") end end
 function Status:SetStatus(s) self.Status=s; if self._dot then self._dot.BackgroundColor3=self._window.Theme:Get(TOKENS[s] or "TextSecondary") end; return self end
 return Status
@@ -522,10 +525,10 @@ function TextField.new(section,options)
 end
 function TextField:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._box=Create.New("TextBox",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=self.ClearOnFocus,MultiLine=self.Multiline,PlaceholderText=self.Placeholder,Text=tostring(self:GetValue() or ""),Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._box}); Create.New("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._box}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.15,Parent=self._box}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._box,{BackgroundColor3="ControlInset",TextColor3="Text",PlaceholderColor3="TextTertiary"})
+	self._box=Create.New("TextBox",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=self.ClearOnFocus,MultiLine=self.Multiline,PlaceholderText=self.Placeholder,Text=tostring(self:GetValue() or ""),Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._box}); Create.New("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._box}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._box}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._box,{BackgroundColor3="ControlInset",TextColor3="Text",PlaceholderColor3="TextTertiary"})
 	if self.CommitOn=="Change" then self._janitor:Add(self._box:GetPropertyChangedSignal("Text"):Connect(function() self:_commit() end)) end
 	self._janitor:Add(self._box.Focused:Connect(function() self._stroke.Color=w.Theme:Get("AccentBorder"); self._stroke.Transparency=0; if w.Device.Layout=="Drawer" then task.defer(function() self:Reveal() end) end end))
-	self._janitor:Add(self._box.FocusLost:Connect(function(enter) self._stroke.Color=w.Theme:Get("BorderSubtle"); self._stroke.Transparency=0.15; if self.CommitOn=="FocusLost" or (self.CommitOn=="Enter" and enter) then self:_commit() end end))
+	self._janitor:Add(self._box.FocusLost:Connect(function(enter) self._stroke.Color=w.Theme:Get("BorderSubtle"); self._stroke.Transparency=0.5; if self.CommitOn=="FocusLost" or (self.CommitOn=="Enter" and enter) then self:_commit() end end))
 end
 function TextField:_commit()
 	local text=self._box.Text; if self.MaxLength and #text>self.MaxLength then text=string.sub(text,1,self.MaxLength); self._box.Text=text end
@@ -553,16 +556,16 @@ local Toggle=setmetatable({}, {__index=Base}); Toggle.__index=Toggle
 function Toggle.new(section,options) local self=setmetatable({},Toggle); Base.init(self,section,"Toggle",options,{Stateful=true,Default=options.Default==true}); return Base.finish(self) end
 function Toggle:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.fromOffset(40,22),Position=UDim2.new(1,0,0.5,0),AnchorPoint=Vector2.new(1,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._button})
-	self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.1,Parent=self._button}); w:_bind(self._stroke,{Color="BorderStrong"}); w:_bind(self._button,{BackgroundColor3="SurfaceInset"})
-	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(16,16),Position=UDim2.new(0,3,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=self._button}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="TextSecondary"})
+	self._button=Create.New("TextButton",{Size=UDim2.fromOffset(36,20),Position=UDim2.new(1,0,0.5,0),AnchorPoint=Vector2.new(1,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._button})
+	self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._button}); w:_bind(self._stroke,{Color="BorderStrong"}); w:_bind(self._button,{BackgroundColor3="SurfaceActive"})
+	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.new(0,3,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=self._button}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="TextTertiary"})
 	self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then self:Flip() end end))
 end
 function Toggle:_render(value)
 	if not self._button then return end; local on=value==true; local w=self._window
-	self._button.BackgroundColor3=w.Theme:Get(if on then "Accent" else "SurfaceInset"); self._stroke.Color=w.Theme:Get(if on then "Accent" else "BorderStrong"); self._stroke.Transparency=if on then 1 else 0.1
-	self._knob.BackgroundColor3=w.Theme:Get(if on then "AccentText" else "TextSecondary")
-	w.Motion:Tween(self._knob,"Fast",{Position=if on then UDim2.new(1,-19,0.5,0) else UDim2.new(0,3,0.5,0)})
+	self._button.BackgroundColor3=w.Theme:Get(if on then "Accent" else "SurfaceActive"); self._stroke.Color=w.Theme:Get(if on then "AccentBorder" else "BorderStrong"); self._stroke.Transparency=if on then 0.35 else 0.5
+	self._knob.BackgroundColor3=w.Theme:Get(if on then "AccentText" else "TextTertiary")
+	w.Motion:Tween(self._knob,"Fast",{Position=if on then UDim2.new(1,-17,0.5,0) else UDim2.new(0,3,0.5,0)})
 end
 function Toggle:Flip() return self:SetValue(not self:GetValue()) end
 return Toggle
@@ -599,7 +602,7 @@ local Dark=__require("themes/Dark")
 local Light=__require("themes/Light")
 
 local BobloUI={}
-BobloUI.Version="0.9.1-beta.1"; BobloUI.ApiLevel=9; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.9.2-beta.1"; BobloUI.ApiLevel=9; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -1542,8 +1545,8 @@ function Theme:_resolve()
 
 	-- Semantic accent derivatives stay correct even after SetAccent().
 	local mixBase = palette.Surface or palette.Background
-	palette.AccentSoft = palette.Accent:Lerp(mixBase, 0.78)
-	palette.AccentMuted = palette.Accent:Lerp(mixBase, 0.60)
+	palette.AccentSoft = palette.Accent:Lerp(mixBase, 0.90)
+	palette.AccentMuted = palette.Accent:Lerp(mixBase, 0.72)
 	palette.AccentBorder = palette.Accent:Lerp(palette.Border or mixBase, 0.48)
 
 	self._base = base
@@ -1708,47 +1711,47 @@ Tokens.Fonts = {
 
 Tokens.Profiles = {
 	Comfortable = {
-		ControlHeight = 46,
+		ControlHeight = 44,
 		ControlPadding = 12,
-		ControlRadius = 10,
-		FieldHeight = 34,
+		ControlRadius = 8,
+		FieldHeight = 32,
 		FieldRadius = 8,
-		RowGap = 6,
-		SectionGap = 14,
-		SectionPadding = 14,
-		PagePadding = 18,
-		HeaderHeight = 58,
-		SidebarWidth = 190,
-		RailWidth = 58,
-		NavItemHeight = 38,
-		FontCaption = 11,
-		FontSmall = 12,
-		FontBody = 14,
-		FontTitle = 15,
-		FontHeading = 19,
-		FontDisplay = 22,
-		IconSm = 15,
-		IconMd = 19,
+		RowGap = 0,
+		SectionGap = 16,
+		SectionPadding = 10,
+		PagePadding = 22,
+		HeaderHeight = 54,
+		SidebarWidth = 176,
+		RailWidth = 54,
+		NavItemHeight = 36,
+		FontCaption = 10,
+		FontSmall = 11,
+		FontBody = 13,
+		FontTitle = 14,
+		FontHeading = 18,
+		FontDisplay = 21,
+		IconSm = 14,
+		IconMd = 18,
 		CornerSm = 7,
-		CornerMd = 11,
-		CornerLg = 16,
+		CornerMd = 10,
+		CornerLg = 14,
 		Stroke = 1,
-		SliderTrack = 4,
-		SliderKnob = 14,
+		SliderTrack = 3,
+		SliderKnob = 12,
 	},
 	Compact = {
-		ControlHeight = 40,
+		ControlHeight = 38,
 		ControlPadding = 10,
 		ControlRadius = 9,
 		FieldHeight = 30,
 		FieldRadius = 7,
-		RowGap = 4,
+		RowGap = 0,
 		SectionGap = 10,
-		SectionPadding = 12,
-		PagePadding = 14,
-		HeaderHeight = 52,
-		SidebarWidth = 178,
-		RailWidth = 52,
+		SectionPadding = 9,
+		PagePadding = 18,
+		HeaderHeight = 50,
+		SidebarWidth = 164,
+		RailWidth = 50,
 		NavItemHeight = 34,
 		FontCaption = 10,
 		FontSmall = 11,
@@ -1762,21 +1765,21 @@ Tokens.Profiles = {
 		CornerMd = 10,
 		CornerLg = 15,
 		Stroke = 1,
-		SliderTrack = 4,
-		SliderKnob = 13,
+		SliderTrack = 3,
+		SliderKnob = 11,
 	},
 	Touch = {
-		ControlHeight = 50,
+		ControlHeight = 48,
 		ControlPadding = 13,
 		ControlRadius = 11,
 		FieldHeight = 38,
 		FieldRadius = 9,
-		RowGap = 7,
+		RowGap = 0,
 		SectionGap = 15,
 		SectionPadding = 14,
 		PagePadding = 14,
-		HeaderHeight = 56,
-		SidebarWidth = 250,
+		HeaderHeight = 54,
+		SidebarWidth = 238,
 		RailWidth = 60,
 		NavItemHeight = 48,
 		FontCaption = 11,
@@ -1791,7 +1794,7 @@ Tokens.Profiles = {
 		CornerMd = 12,
 		CornerLg = 17,
 		Stroke = 1,
-		SliderTrack = 5,
+		SliderTrack = 4,
 		SliderKnob = 16,
 	},
 }
@@ -3271,12 +3274,12 @@ function Section.new(tab,options)
 end
 function Section:_mount()
 	if self._mounted then return end; self._mounted=true; local w=self._window; local t=w.Tokens
-	self._root=Surface.new(w,{Name="Section",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BorderSizePixel=0,Visible=self._visible,Parent=self._tab:_sectionParent(self.Column)},{Token=if self._implicit then "Canvas" else "Surface",Stroke=not self._implicit,StrokeToken="BorderSubtle",StrokeTransparency=0.28,Corner=if self._implicit then 0 else t:Get("CornerMd")}); self._janitor:Add(self._root)
+	self._root=Surface.new(w,{Name="Section",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BorderSizePixel=0,Visible=self._visible,Parent=self._tab:_sectionParent(self.Column)},{Token=if self._implicit then "Canvas" else "SurfaceRaised",Stroke=not self._implicit,StrokeToken="BorderSubtle",StrokeTransparency=0.48,Corner=if self._implicit then 0 else t:Get("CornerMd")}); self._janitor:Add(self._root)
 	local pad=if self._implicit then 0 else t:Get("SectionPadding"); self._padding=Create.New("UIPadding",{PaddingTop=UDim.new(0,pad),PaddingBottom=UDim.new(0,pad),PaddingLeft=UDim.new(0,pad),PaddingRight=UDim.new(0,pad),Parent=self._root}); self._rootLayout=Create.List(if self._implicit then t:Get("RowGap") else 10); self._rootLayout.Parent=self._root
 	if not self._implicit and self.Title then
-		local headerClass=if self.Collapsible then "TextButton" else "Frame"; self._header=Create.New(headerClass,{Size=UDim2.new(1,0,0,self.Description and 42 or 28),BackgroundTransparency=1,BorderSizePixel=0,Text=headerClass=="TextButton" and "" or nil,AutoButtonColor=headerClass=="TextButton" and false or nil,Parent=self._root})
-		self._title=Create.New("TextLabel",{Size=UDim2.new(1,-34,0,22),BackgroundTransparency=1,Font=w.Fonts.Bold,TextSize=t:Get("FontTitle"),TextXAlignment=Enum.TextXAlignment.Left,Text=w.Locale:Resolve(self.Title),Parent=self._header}); w:_bind(self._title,{TextColor3="Text"})
-		if self.Description then self._desc=Create.New("TextLabel",{Size=UDim2.new(1,-34,0,18),Position=UDim2.fromOffset(0,22),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=w.Locale:Resolve(self.Description),Parent=self._header}); w:_bind(self._desc,{TextColor3="TextTertiary"}) end
+		local headerClass=if self.Collapsible then "TextButton" else "Frame"; self._header=Create.New(headerClass,{Size=UDim2.new(1,0,0,self.Description and 38 or 24),BackgroundTransparency=1,BorderSizePixel=0,Text=headerClass=="TextButton" and "" or nil,AutoButtonColor=headerClass=="TextButton" and false or nil,Parent=self._root})
+		self._title=Create.New("TextLabel",{Size=UDim2.new(1,-34,0,19),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontTitle"),TextXAlignment=Enum.TextXAlignment.Left,Text=w.Locale:Resolve(self.Title),Parent=self._header}); w:_bind(self._title,{TextColor3="Text"})
+		if self.Description then self._desc=Create.New("TextLabel",{Size=UDim2.new(1,-34,0,15),Position=UDim2.fromOffset(0,20),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=w.Locale:Resolve(self.Description),Parent=self._header}); w:_bind(self._desc,{TextColor3="TextTertiary"}) end
 		if self.Collapsible then
 			self._chevron=Create.New("TextLabel",{Size=UDim2.fromOffset(26,26),Position=UDim2.new(1,0,0,0),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=17,Text=if self.Collapsed then "›" else "⌄",Parent=self._header}); w:_bind(self._chevron,{TextColor3="TextTertiary"}); self._janitor:Add(self._header.MouseButton1Click:Connect(function() self:SetCollapsed(not self.Collapsed) end))
 		end
@@ -3290,8 +3293,13 @@ function Section:_applyTokens()
 	if self._rootLayout then self._rootLayout.Padding=UDim.new(0,if self._implicit then t:Get("RowGap") else 10) end; if self._contentLayout then self._contentLayout.Padding=UDim.new(0,t:Get("RowGap")) end
 	if self._title then self._title.TextSize=t:Get("FontTitle") end; if self._desc then self._desc.TextSize=t:Get("FontSmall") end
 end
-function Section:_registerControl(c) table.insert(self._controls,c) end
-function Section:_removeControl(c) local p=table.find(self._controls,c); if p then table.remove(self._controls,p) end end
+function Section:_refreshSeparators()
+	local visible={}
+	for _,control in self._controls do if control._separator and control._root and control._root.Visible then table.insert(visible,control) end end
+	for i,control in visible do control._separator.Visible=i<#visible end
+end
+function Section:_registerControl(c) table.insert(self._controls,c); if self._mounted then task.defer(function() if not self._destroyed then self:_refreshSeparators() end end) end end
+function Section:_removeControl(c) local p=table.find(self._controls,c); if p then table.remove(self._controls,p) end; self:_refreshSeparators() end
 function Section:AddButton(o) return Button.new(self,o) end; function Section:AddToggle(o) return Toggle.new(self,o) end; function Section:AddSlider(o) return Slider.new(self,o) end; function Section:AddDropdown(o) return Dropdown.new(self,o) end; function Section:AddInput(o) return TextField.new(self,o) end; function Section:AddKeybind(o) return Keybind.new(self,o) end; function Section:AddColorPicker(o) return ColorPicker.new(self,o) end; function Section:AddParagraph(o) return Paragraph.new(self,o) end; function Section:AddDivider(o) return Divider.new(self,o or {}) end; function Section:AddStatus(o) return Status.new(self,o) end
 function Section:_refreshLocale() if self._title then self._title.Text=self._window.Locale:Resolve(self.Title or "") end; if self._desc then self._desc.Text=self._window.Locale:Resolve(self.Description or "") end; if self.Id then self._window.Registry:Update(self,{Title=self._window.Locale:Resolve(self.Title or "Section"),Path=self._window.Locale:Resolve(self._tab.Title)}) end; for _,control in self._controls do if control._refreshText then control:_refreshText() end end end
 function Section:SetTitle(t) self.Title=t; if self._title then self._title.Text=self._window.Locale:Resolve(t or "") end; if self.Id then self._window.Registry:Update(self,{Title=self._window.Locale:Resolve(t or "Section")}) end; return self end
@@ -3342,6 +3350,53 @@ Tab.__index = Tab
 local FADE_TIME = 0.12
 local DRAWER_TIME = 0.18
 
+local function drawSearchIcon(window, parent)
+	local ring = New("Frame", {
+		Size = UDim2.fromOffset(11, 11),
+		Position = UDim2.new(0.5, -2, 0.5, -2),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = ring})
+	local stroke = New("UIStroke", {Thickness = 1.5, Transparency = 0.08, Parent = ring})
+	window:_bind(stroke, {Color = "TextSecondary"})
+	local handle = New("Frame", {
+		Size = UDim2.fromOffset(6, 1.5),
+		Position = UDim2.new(0.5, 6, 0.5, 6),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Rotation = 45,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = handle})
+	window:_bind(handle, {BackgroundColor3 = "TextSecondary"})
+end
+
+local function drawThemeIcon(window, parent)
+	local moon = New("Frame", {
+		Size = UDim2.fromOffset(13, 13),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = moon})
+	local stroke = New("UIStroke", {Thickness = 1.4, Transparency = 0.08, Parent = moon})
+	window:_bind(stroke, {Color = "TextSecondary"})
+	local mask = New("Frame", {
+		Size = UDim2.fromOffset(10, 10),
+		Position = UDim2.new(0.5, 3, 0.5, -2),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = mask})
+	window:_bind(mask, {BackgroundColor3 = "Canvas"})
+end
+
 -- ===================================================================
 -- Tab
 -- ===================================================================
@@ -3350,6 +3405,7 @@ function Tab.new(window, options)
 	local self = setmetatable({
 		Id = options.Id or Util.slug(options.Title),
 		Title = options.Title,
+		Description = options.Description,
 		Icon = options.Icon,
 		Badge = options.Badge,
 		Order = options.Order or (#window._tabs + 1),
@@ -3377,12 +3433,12 @@ function Tab.new(window, options)
 		Parent = window._navList,
 	})
 	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerSm")), Parent = button })
-	local indicator = New("Frame", {Name="Indicator", Size=UDim2.fromOffset(3,18), Position=UDim2.new(0,2,0.5,0), AnchorPoint=Vector2.new(0,0.5), BorderSizePixel=0, Visible=false, Parent=button})
+	local indicator = New("Frame", {Name="Indicator", Size=UDim2.fromOffset(2,16), Position=UDim2.new(0,1,0.5,0), AnchorPoint=Vector2.new(0,0.5), BorderSizePixel=0, Visible=false, Parent=button})
 	New("UICorner", {CornerRadius=UDim.new(1,0), Parent=indicator}); window:_bind(indicator,{BackgroundColor3="Accent"})
 	self._indicator=indicator
 	self._janitor:Add(button)
 
-	-- Icon when supplied, otherwise a letter avatar fallback.
+	-- Icon when supplied, otherwise a minimal initial (also remains useful in Rail mode).
 	local avatarProps = {
 		Name = "Avatar",
 		Size = UDim2.fromOffset(tokens:Get("IconMd"), tokens:Get("IconMd")),
@@ -3394,11 +3450,11 @@ function Tab.new(window, options)
 	if options.Icon then
 		avatar = Icon.new(window, options.Icon, avatarProps)
 	else
-		avatarProps.Font = window.Fonts.Bold
+		avatarProps.Font = window.Fonts.Medium
 		avatarProps.TextSize = tokens:Get("FontSmall")
 		avatarProps.Text = window.Locale:Resolve(options.Title):sub(1, 1):upper()
 		avatar = New("TextLabel", avatarProps)
-		window:_bind(avatar, { TextColor3 = "TextSecondary" })
+		window:_bind(avatar, { TextColor3 = "TextTertiary" })
 	end
 
 	local label = New("TextLabel", {
@@ -3414,7 +3470,7 @@ function Tab.new(window, options)
 		Parent = button,
 	})
 
-	window:_bind(button, { BackgroundColor3 = "AccentSoft" })
+	window:_bind(button, { BackgroundColor3 = "SurfaceHover" })
 	window:_bind(label, { TextColor3 = "TextSecondary" })
 
 	self._button = button
@@ -3425,7 +3481,7 @@ function Tab.new(window, options)
 
 	self._janitor:Add(button.MouseEnter:Connect(function()
 		if not self._selected then
-			button.BackgroundTransparency = 0.35
+			button.BackgroundTransparency = 0.45
 		end
 	end))
 	self._janitor:Add(button.MouseLeave:Connect(function()
@@ -3460,13 +3516,59 @@ function Tab.new(window, options)
 		PaddingRight = UDim.new(0, tokens:Get("PagePadding")),
 		Parent = self._page,
 	})
+	self._introHeight = if self.Description then 54 else 36
+	self._pageIntro = New("Frame", {
+		Name = "PageIntro",
+		Size = UDim2.new(1, 0, 0, self._introHeight),
+		BackgroundTransparency = 1,
+		Parent = self._page,
+	})
+	self._pageTitle = New("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 22),
+		BackgroundTransparency = 1,
+		Font = window.Fonts.Bold,
+		TextSize = tokens:Get("FontHeading"),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = window.Locale:Resolve(self.Title),
+		Parent = self._pageIntro,
+	})
+	window:_bind(self._pageTitle, {TextColor3 = "Text"})
+	if self.Description then
+		self._pageDescription = New("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 16),
+			Position = UDim2.fromOffset(0, 26),
+			BackgroundTransparency = 1,
+			Font = window.Fonts.Regular,
+			TextSize = tokens:Get("FontSmall"),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = window.Locale:Resolve(self.Description),
+			Parent = self._pageIntro,
+		})
+		window:_bind(self._pageDescription, {TextColor3 = "TextTertiary"})
+	end
 	self._sectionHost = New("Frame", {
 		Name = "SectionHost",
 		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.fromOffset(0, self._introHeight),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Parent = self._page,
 	})
+	self._emptyState = New("TextLabel", {
+		Name = "EmptyState",
+		Size = UDim2.new(1, -40, 0, 54),
+		Position = UDim2.new(0, 20, 0, self._introHeight + 24),
+		BackgroundTransparency = 1,
+		Font = window.Fonts.Regular,
+		TextSize = tokens:Get("FontBody"),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextWrapped = true,
+		Text = "Nothing here yet",
+		Visible = false,
+		Parent = self._page,
+	})
+	window:_bind(self._emptyState, { TextColor3 = "TextTertiary" })
 	self._column1 = New("Frame", {Name="Column1", Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Parent=self._sectionHost})
 	self._column2 = New("Frame", {Name="Column2", Size=UDim2.new(0.5,-6,0,0), Position=UDim2.new(0.5,6,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Visible=false, Parent=self._sectionHost})
 	self._column1Layout = Create.List(tokens:Get("SectionGap")); self._column1Layout.Parent = self._column1
@@ -3485,11 +3587,11 @@ end
 	builds Instances here and nothing else.
 ]]
 function Tab:_ensureMounted()
-	if self._mounted then
-		return
-	end
 	self._mounted = true
-	for _, section in self._sections do section:_mount() end
+	for _, section in self._sections do
+		if not section._mounted then section:_mount() end
+	end
+	if self._emptyState then self._emptyState.Visible = #self._sections == 0 end
 end
 
 
@@ -3498,6 +3600,9 @@ function Tab:_applyTokens()
 	if self._pagePadding then
 		local p=UDim.new(0,t:Get("PagePadding")); self._pagePadding.PaddingTop=p; self._pagePadding.PaddingBottom=p; self._pagePadding.PaddingLeft=p; self._pagePadding.PaddingRight=p
 	end
+	if self._pageTitle then self._pageTitle.TextSize=t:Get("FontHeading") end
+	if self._pageDescription then self._pageDescription.TextSize=t:Get("FontSmall") end
+	if self._emptyState then self._emptyState.TextSize=t:Get("FontBody") end
 	if self._column1Layout then self._column1Layout.Padding=UDim.new(0,t:Get("SectionGap")) end
 	if self._column2Layout then self._column2Layout.Padding=UDim.new(0,t:Get("SectionGap")) end
 	for _,section in self._sections do if section._applyTokens then section:_applyTokens() end end
@@ -3520,7 +3625,9 @@ end
 function Tab:AddSection(options)
 	options = options or {}
 	if not options.Title and not options._implicit then error("[BobloUI] AddSection requires Title.", 2) end
-	return Section.new(self, options)
+	local section=Section.new(self, options)
+	if self._emptyState then self._emptyState.Visible=false end
+	return section
 end
 
 function Tab:_default()
@@ -3550,12 +3657,12 @@ end
 function Tab:_setSelected(selected: boolean)
 	self._selected = selected
 	self._page.Visible = selected
-	self._button.BackgroundTransparency = if selected then 0 else 1
+	self._button.BackgroundTransparency = if selected then 0.15 else 1
 	if self._indicator then self._indicator.Visible=selected end
 
 	local theme = self._window.Theme
 	self._label.TextColor3 = theme:Get(if selected then "Text" else "TextSecondary")
-	if self._avatar:IsA("ImageLabel") then self._avatar.ImageColor3 = theme:Get(if selected then "Accent" else "TextTertiary") else self._avatar.TextColor3 = theme:Get(if selected then "Accent" else "TextTertiary") end
+	if self._avatar:IsA("ImageLabel") then self._avatar.ImageColor3 = theme:Get(if selected then "Accent" else "TextTertiary") elseif self._avatar:IsA("TextLabel") then self._avatar.TextColor3 = theme:Get(if selected then "Accent" else "TextTertiary") else self._avatar.BackgroundColor3 = theme:Get(if selected then "Accent" else "TextTertiary") end
 
 	if selected then
 		self:_ensureMounted()
@@ -3565,6 +3672,8 @@ end
 function Tab:_refreshLocale()
 	local shown=self._window.Locale:Resolve(self.Title)
 	self._label.Text=shown; if not self.Icon and self._avatar:IsA("TextLabel") then self._avatar.Text=shown:sub(1,1):upper() end
+	if self._pageTitle then self._pageTitle.Text=shown end
+	if self._pageDescription then self._pageDescription.Text=self._window.Locale:Resolve(self.Description or "") end
 	if self._window.Registry then self._window.Registry:Update(self,{Title=shown,Path=shown}) end
 	for _,section in self._sections do if section._refreshLocale then section:_refreshLocale() end end
 	if self._selected then self._window:_refreshHeaderTitle() end
@@ -3574,10 +3683,25 @@ function Tab:SetTitle(title: string)
 	self.Title = title
 	local shown=self._window.Locale:Resolve(title)
 	self._label.Text = shown
-	if not self.Icon and self._avatar:IsA("TextLabel") then self._avatar.Text = shown:sub(1, 1):upper() end
+	if self._pageTitle then self._pageTitle.Text=shown end
+	if not self.Icon and self._avatar:IsA("TextLabel") then self._avatar.Text = shown:sub(1,1):upper() end
 	if self._window.Registry then self._window.Registry:Update(self,{Title=shown,Path=shown}) end
 	if self._selected then
 		self._window:_refreshHeaderTitle()
+	end
+	return self
+end
+
+function Tab:SetDescription(description: string?)
+	self.Description=description
+	if self._pageDescription then self._pageDescription:Destroy(); self._pageDescription=nil end
+	self._introHeight=if description then 54 else 36
+	if self._pageIntro then self._pageIntro.Size=UDim2.new(1,0,0,self._introHeight) end
+	if self._sectionHost then self._sectionHost.Position=UDim2.fromOffset(0,self._introHeight) end
+	if self._emptyState then self._emptyState.Position=UDim2.new(0,20,0,self._introHeight+24) end
+	if description and self._pageIntro then
+		self._pageDescription=New("TextLabel",{Size=UDim2.new(1,0,0,16),Position=UDim2.fromOffset(0,26),BackgroundTransparency=1,Font=self._window.Fonts.Regular,TextSize=self._window.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,Text=self._window.Locale:Resolve(description),Parent=self._pageIntro})
+		self._window:_bind(self._pageDescription,{TextColor3="TextTertiary"})
 	end
 	return self
 end
@@ -3587,7 +3711,7 @@ function Tab:SetIcon(icon)
 	if self._avatar then self._avatar:Destroy() end
 	local t=self._window.Tokens
 	local props={Name="Avatar",Size=UDim2.fromOffset(t:Get("IconMd"),t:Get("IconMd")),Position=UDim2.new(0,8,0.5,0),AnchorPoint=Vector2.new(0,0.5),Parent=self._button}
-	if icon then self._avatar=Icon.new(self._window,icon,props) else props.Font=self._window.Fonts.Bold; props.TextSize=t:Get("FontSmall"); props.Text=self._window.Locale:Resolve(self.Title):sub(1,1):upper(); self._avatar=New("TextLabel",props); self._window:_bind(self._avatar,{TextColor3="TextSecondary"}) end
+	if icon then self._avatar=Icon.new(self._window,icon,props) else props.Font=self._window.Fonts.Medium; props.TextSize=t:Get("FontSmall"); props.Text=self._window.Locale:Resolve(self.Title):sub(1,1):upper(); self._avatar=New("TextLabel",props); self._window:_bind(self._avatar,{TextColor3="TextTertiary"}) end
 	self:_setSelected(self._selected)
 	self._window:_applyLayout(self._window._layout,true)
 	return self
@@ -3658,8 +3782,8 @@ function Window.new(context, options)
 		_layout = nil,
 		_drawer = nil,
 		_visible = true,
-		_size = options.Size or UDim2.fromOffset(760, 520),
-		_minSize = options.MinSize or Vector2.new(520, 360),
+		_size = options.Size or UDim2.fromOffset(720, 480),
+		_minSize = options.MinSize or Vector2.new(500, 340),
 		_themeHandles = {},
 	}, Window)
 
@@ -3738,7 +3862,7 @@ function Window:_build()
 		Parent = self._root,
 	})
 	self:_bind(self._root, { BackgroundColor3 = "Canvas" })
-	self._rootStroke.Transparency = 0.08
+	self._rootStroke.Transparency = 0.42
 	self:_bind(self._rootStroke, { Color = "BorderStrong" })
 
 	self:_buildHeader()
@@ -3865,36 +3989,38 @@ function Window:_buildHeader()
 
 	self._searchButton = New("TextButton", {
 		Name = "Search",
-		Size = UDim2.fromOffset(32, 32),
+		Size = UDim2.fromOffset(30, 30),
 		Position = UDim2.new(1, -80, 0.5, 0),
 		AnchorPoint = Vector2.new(1, 0.5),
-		BackgroundTransparency = 0.35,
+		BackgroundTransparency = 1,
 		AutoButtonColor = false,
-		Text = "⌕",
-		Font = self.Fonts.Bold,
-		TextSize = 18,
+		Text = "",
 		Parent = self._header,
 	})
 	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerSm")), Parent = self._searchButton })
-	self:_bind(self._searchButton, { BackgroundColor3 = "Control", TextColor3 = "TextSecondary" })
+	self:_bind(self._searchButton, { BackgroundColor3 = "ControlHover" })
+	drawSearchIcon(self, self._searchButton)
+	self._janitor:Add(self._searchButton.MouseEnter:Connect(function() self._searchButton.BackgroundTransparency=0.35 end))
+	self._janitor:Add(self._searchButton.MouseLeave:Connect(function() self._searchButton.BackgroundTransparency=1 end))
 	self._janitor:Add(self._searchButton.MouseButton1Click:Connect(function()
 		if self.OpenSearch then self:OpenSearch() end
 	end))
 
 	self._themeButton = New("TextButton", {
 		Name = "Theme",
-		Size = UDim2.fromOffset(32, 32),
+		Size = UDim2.fromOffset(30, 30),
 		Position = UDim2.new(1, -44, 0.5, 0),
 		AnchorPoint = Vector2.new(1, 0.5),
-		BackgroundTransparency = 0.35,
+		BackgroundTransparency = 1,
 		AutoButtonColor = false,
-		Text = "◐",
-		Font = self.Fonts.Bold,
-		TextSize = 17,
+		Text = "",
 		Parent = self._header,
 	})
 	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerSm")), Parent = self._themeButton })
-	self:_bind(self._themeButton, { BackgroundColor3 = "Control", TextColor3 = "TextSecondary" })
+	self:_bind(self._themeButton, { BackgroundColor3 = "ControlHover" })
+	drawThemeIcon(self, self._themeButton)
+	self._janitor:Add(self._themeButton.MouseEnter:Connect(function() self._themeButton.BackgroundTransparency=0.35 end))
+	self._janitor:Add(self._themeButton.MouseLeave:Connect(function() self._themeButton.BackgroundTransparency=1 end))
 	self._janitor:Add(self._themeButton.MouseButton1Click:Connect(function()
 		if self.SetTheme then self:SetTheme(self.Theme:Current() == "Dark" and "Light" or "Dark") end
 	end))
@@ -4336,28 +4462,28 @@ __modules["themes/Dark"] = function()
 --!nonstrict
 local hex=Color3.fromHex
 return {
-	Canvas=hex("#0B0D10"),
-	Background=hex("#0B0D10"),
-	Sidebar=hex("#0E1014"),
-	Surface=hex("#12151A"),
-	SurfaceRaised=hex("#161A20"),
-	SurfaceInset=hex("#0E1115"),
-	SurfaceSecondary=hex("#181C22"),
-	SurfaceHover=hex("#1B2027"),
-	SurfaceActive=hex("#212731"),
-	Control=hex("#15191F"),
-	ControlHover=hex("#1A1F26"),
-	ControlPressed=hex("#202630"),
-	ControlInset=hex("#0F1217"),
-	BorderSubtle=hex("#20252C"),
-	Border=hex("#282E37"),
-	BorderStrong=hex("#39424F"),
-	Text=hex("#F0F2F5"),
-	TextSecondary=hex("#9AA3B2"),
-	TextTertiary=hex("#6F7887"),
-	TextDisabled=hex("#555E6B"),
-	Accent=hex("#7C5CFC"),
-	Success=hex("#42D392"),
+	Canvas=hex("#090B0E"),
+	Background=hex("#090B0E"),
+	Sidebar=hex("#0C0E12"),
+	Surface=hex("#101319"),
+	SurfaceRaised=hex("#13171D"),
+	SurfaceInset=hex("#0D1014"),
+	SurfaceSecondary=hex("#171B22"),
+	SurfaceHover=hex("#171C23"),
+	SurfaceActive=hex("#1D232C"),
+	Control=hex("#12161C"),
+	ControlHover=hex("#151A21"),
+	ControlPressed=hex("#1B2028"),
+	ControlInset=hex("#0D1116"),
+	BorderSubtle=hex("#1C222A"),
+	Border=hex("#252C36"),
+	BorderStrong=hex("#343D49"),
+	Text=hex("#F4F6F8"),
+	TextSecondary=hex("#A7B0BE"),
+	TextTertiary=hex("#707B8B"),
+	TextDisabled=hex("#535C69"),
+	Accent=hex("#8B7CF6"),
+	Success=hex("#55D89A"),
 	Warning=hex("#F2B84B"),
 	Error=hex("#F06469"),
 	Info=hex("#58B9FF"),
