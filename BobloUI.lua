@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.10.0-beta.1 - generated bundle, do not edit.
+	BobloUI v0.10.1-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-22T09:01:47.198Z
+	Built: 2026-08-22T09:23:40.498Z
 	Modules: 55
 ]]
 local __modules = {}
@@ -590,8 +590,29 @@ function Keybind:_mountValue(host)
 end
 function Keybind:_render(v) if type(v)=="table" then self.Mode=v.Mode or self.Mode end; if self._button then self._button.Text=if self._capturing then "Press a key…" else `{keyName(v)}  ·  {self.Mode}`; self._button.BackgroundColor3=self._window.Theme:Get(self._capturing and "AccentSoft" or "ControlInset"); self._stroke.Color=self._window.Theme:Get(self._capturing and "AccentBorder" or "BorderSubtle"); self:_rebind() end end
 function Keybind:_rebind() if self._binding then self._binding:Destroy(); self._binding=nil end; local v=self:GetValue(); if not self._mounted or type(v)~="table" then return end; local key=enumKey(v.Key); if not key then return end; self._binding=self._window.Input:BindKey(self.Id or tostring(self),key,v.Mode or self.Mode,function(active) if self._actionCallback then local ok,err=xpcall(self._actionCallback,debug.traceback,active); if not ok then warn(err) end end end); self._janitor:Add(self._binding,"Destroy","keybinding") end
-function Keybind:Capture() if self._capturing then return self end; self._capturing=true; self:_render(self:GetValue()); self._janitor:Add(self._window.Input:CaptureNextKey(function(key) self._capturing=false; if table.find(self.Blacklist,key) then self:_render(self:GetValue()); return end; local v=table.clone(self:GetValue() or {}); v.Key=key.Name; v.Mode=self.Mode; self:SetValue(v) end),nil,"capture"); return self end
-function Keybind:Cancel() self._capturing=false; self._janitor:Remove("capture"); self:_render(self:GetValue()); return self end
+function Keybind:Capture()
+	if self._capturing then return self end
+	self._capturing=true; self:_render(self:GetValue())
+	local cancel=self._window.Input:CaptureNextKey(function(key)
+		-- The capture has already been consumed by Input. Release the stale
+		-- Janitor entry without invoking its cancellation callback.
+		self._janitor:Release("capture")
+		self._capturing=false
+		if table.find(self.Blacklist,key) then self:_render(self:GetValue()); return end
+		local v=table.clone(self:GetValue() or {}); v.Key=key.Name; v.Mode=self.Mode; self:SetValue(v)
+	end,function()
+		if self._destroyed then return end
+		self._capturing=false; self:_render(self:GetValue())
+	end)
+	self._janitor:Add(cancel,nil,"capture")
+	return self
+end
+function Keybind:Cancel()
+	if not self._capturing then return self end
+	self._janitor:Remove("capture")
+	self._capturing=false; self:_render(self:GetValue())
+	return self
+end
 function Keybind:SetMode(mode) if not table.find(self.AllowedModes,mode) then error(`[BobloUI] keybind mode "{mode}" is not allowed.`,2) end; self.Mode=mode; local v=table.clone(self:GetValue() or {}); v.Mode=mode; return self:SetValue(v) end
 function Keybind:IsActive() return self._binding and self._binding.Active or false end
 function Keybind:Focus() return self:Capture() end
@@ -815,7 +836,7 @@ local Navigation=__require("services/Navigation")
 local HttpService=game:GetService("HttpService")
 
 local BobloUI={}
-BobloUI.Version="0.10.0-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.10.1-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -1186,12 +1207,25 @@ function Input.new()
 	return self
 end
 function Input:_began(i,processed)
-	if self._nextCapture and not processed then
-		local cb=self._nextCapture; self._nextCapture=nil
-		if i.KeyCode~=Enum.KeyCode.Unknown then cb(i.KeyCode) elseif i.UserInputType~=Enum.UserInputType.MouseMovement then cb(i.UserInputType) end
-		return
+	-- Capture is an explicit user action. Roblox often marks keys as processed
+	-- when the game has its own binding, so gameProcessedEvent must not make
+	-- key capture randomly fail. The capture path owns this input and returns.
+	if self._nextCapture then
+		local capture=self._nextCapture
+		local key=if i.KeyCode~=Enum.KeyCode.Unknown then i.KeyCode elseif i.UserInputType~=Enum.UserInputType.MouseMovement then i.UserInputType else nil
+		if key then
+			self._nextCapture=nil
+			capture.Callback(key)
+			return
+		end
 	end
-	if not processed then
+
+	-- Script-hub keybinds should still fire when the game consumes the same
+	-- key. The one important exception is typing: never trigger a hub action
+	-- while a TextBox/chat field has keyboard focus.
+	local typing=UserInputService:GetFocusedTextBox()~=nil
+	local keyboard=i.KeyCode~=Enum.KeyCode.Unknown
+	if not typing and (not processed or keyboard) then
 		local key=eventKey(i); local list=self._keybinds[key]; if list then for _,h in table.clone(list) do if h.Enabled then h:_press() end end end
 	end
 	self.Began:Fire(i,processed)
@@ -1227,7 +1261,23 @@ function Input:IsKeyDown(key)
 	if key.EnumType==Enum.KeyCode then return UserInputService:IsKeyDown(key) end
 	local ok,result=pcall(UserInputService.IsMouseButtonPressed,UserInputService,key); return ok and result==true
 end
-function Input:CaptureNextKey(callback) self._nextCapture=callback; return function() if self._nextCapture==callback then self._nextCapture=nil end end end
+function Input:CaptureNextKey(callback,onCancel)
+	if type(callback)~="function" then error("[BobloUI] CaptureNextKey expects a callback.",2) end
+	if self._nextCapture then
+		local previous=self._nextCapture; self._nextCapture=nil
+		if previous.OnCancel then pcall(previous.OnCancel) end
+	end
+	local capture={Callback=callback,OnCancel=onCancel}
+	self._nextCapture=capture
+	local alive=true
+	return function()
+		if not alive then return end; alive=false
+		if self._nextCapture==capture then
+			self._nextCapture=nil
+			if capture.OnCancel then pcall(capture.OnCancel) end
+		end
+	end
+end
 function Input:BindKey(id,key,mode,callback)
 	mode=mode or "Toggle"; local handle={Id=id,Key=key,Mode=mode,Callback=callback,Enabled=true,Active=mode=="Always",_toggle=false,_input=self}
 	function handle:_press() if self.Mode=="Hold" then self.Active=true; self.Callback(true) elseif self.Mode=="Toggle" then self._toggle=not self._toggle; self.Active=self._toggle; self.Callback(self.Active) elseif self.Mode=="Always" then self.Active=true; self.Callback(true) end end
@@ -1235,7 +1285,11 @@ function Input:BindKey(id,key,mode,callback)
 	function handle:Destroy() local list=self._input._keybinds[self.Key]; if list then local p=table.find(list,self); if p then table.remove(list,p) end end end
 	local list=self._keybinds[key] or {}; self._keybinds[key]=list; table.insert(list,handle); return handle
 end
-function Input:Destroy() self:CancelCapture(); self._nextCapture=nil; for _,list in self._keybinds do for _,h in list do h.Enabled=false end end; self._keybinds={}; self._janitor:Destroy(); self.Began:Destroy(); self.Changed:Destroy(); self.Ended:Destroy() end
+function Input:Destroy()
+	self:CancelCapture()
+	if self._nextCapture then local capture=self._nextCapture; self._nextCapture=nil; if capture.OnCancel then pcall(capture.OnCancel) end end
+	for _,list in self._keybinds do for _,h in list do h.Enabled=false end end; self._keybinds={}; self._janitor:Destroy(); self.Began:Destroy(); self.Changed:Destroy(); self.Ended:Destroy()
+end
 return Input
 
 end
@@ -3609,7 +3663,7 @@ local Dialog={}; Dialog.__index=Dialog
 function Dialog.new(window) return setmetatable({_window=window,_open={}},Dialog) end
 
 function Dialog:_width()
-	return math.min(392,self._window.Device.Viewport.X-32)
+	return math.max(240,math.min(392,self._window.Device.Viewport.X-32))
 end
 function Dialog:_measure(text,width)
 	if not text or text=="" then return 0 end
@@ -3620,15 +3674,19 @@ end
 function Dialog:_surface(height,onDismiss)
 	local w=self._window
 	if w.Device.Layout=="Drawer" then local h=Sheet.open(w,height,{OnDismiss=onDismiss}); return h,h.Frame end
+	local safeHeight=math.max(1,math.min(height,math.max(1,w.Device.Viewport.Y-32)))
 	local h=w.Layers:Push({Scrim=true,ScrimTransparency=0.52,Modal=true,OnDismiss=onDismiss})
-	local frame=Surface.new(w,{Size=UDim2.fromOffset(self:_width(),height),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,Parent=h.Container},{Token="SurfaceRaised",StrokeToken="Border",StrokeTransparency=0.40,Corner=w.Tokens:Get("CornerLg")})
+	local frame=Surface.new(w,{Size=UDim2.fromOffset(self:_width(),safeHeight),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,ClipsDescendants=true,Parent=h.Container},{Token="SurfaceRaised",StrokeToken="Border",StrokeTransparency=0.40,Corner=w.Tokens:Get("CornerLg")})
 	frame.ZIndex=h.Depth*10+3; return h,frame
 end
-function Dialog:_button(parent,text,primary,danger,callback)
+function Dialog:_button(parent,text,primary,danger,callback,options)
+	options=options or {}
 	local w=self._window
 	local bg=if danger and primary then "Error" elseif primary then "AccentButton" else "ControlInset"
 	local fg=if primary then "AccentText" else "TextSecondary"
-	local b=Create.New("TextButton",{AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),BackgroundTransparency=0,BorderSizePixel=0,AutoButtonColor=false,Text="  "..text.."  ",Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontBody"),Parent=parent})
+	local full=options.FullWidth==true
+	local b=Create.New("TextButton",{AutomaticSize=if full then Enum.AutomaticSize.None else Enum.AutomaticSize.X,Size=if full then UDim2.new(1,0,0,34) else UDim2.new(0,0,0,34),BackgroundTransparency=0,BorderSizePixel=0,AutoButtonColor=false,Text=if full then tostring(text) else "  "..tostring(text).."  ",TextXAlignment=if full then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontBody"),Parent=parent})
+	if full then Create.New("UIPadding",{PaddingLeft=UDim.new(0,11),PaddingRight=UDim.new(0,11),Parent=b}) end
 	Create.New("UICorner",{CornerRadius=UDim.new(0,w.Tokens:Get("FieldRadius")),Parent=b})
 	local stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.58,Parent=b}); w:_bind(stroke,{Color=primary and "AccentBorder" or "BorderSubtle"}); w:_bind(b,{BackgroundColor3=bg,TextColor3=fg})
 	b.MouseEnter:Connect(function() if not danger then b.BackgroundColor3=w.Theme:Get(primary and "AccentButtonHover" or "ControlHover") end end)
@@ -3677,12 +3735,23 @@ function Dialog:Prompt(o) return self:_make(o,"Prompt") end
 function Dialog:Choice(options)
 	options=options or {}; local choices=options.Choices or {}; local w=self._window
 	local result=Signal.new("Dialog.Choice"); local handle={Resolved=result,_resolved=false,_result=nil}
-	local height=math.min(420,92+math.max(1,#choices)*40); local layer,frame
+	local rowHeight,gap=34,6
+	local maxListHeight=math.max(34,math.min(274,w.Device.Viewport.Y-150))
+	local naturalHeight=#choices*rowHeight+math.max(0,#choices-1)*gap
+	local listHeight=math.min(maxListHeight,math.max(rowHeight,naturalHeight))
+	local height=50+listHeight+16; local layer,frame
 	local function resolve(v) if handle._resolved then return end; handle._resolved=true; handle._result=v; result:Fire(v); if layer then layer:Dismiss() end end
 	layer,frame=self:_surface(height,function() resolve(nil) end)
 	local title=Create.New("TextLabel",{Size=UDim2.new(1,-32,0,24),Position=UDim2.fromOffset(16,14),BackgroundTransparency=1,Font=w.Fonts.Bold,TextSize=w.Tokens:Get("FontTitle"),TextXAlignment=Enum.TextXAlignment.Left,Text=options.Title or "Choose",Parent=frame}); w:_bind(title,{TextColor3="Text"})
-	local list=Create.New("Frame",{Size=UDim2.new(1,-32,0,#choices*38),Position=UDim2.fromOffset(16,50),BackgroundTransparency=1,Parent=frame}); Create.List(6).Parent=list
-	for _,choice in choices do self:_button(list,choice.Text or tostring(choice.Value),choice.Primary==true,choice.Danger==true,function() resolve(choice.Value) end) end
+	local scroll=naturalHeight>listHeight
+	local list
+	if scroll then
+		list=Create.New("ScrollingFrame",{Size=UDim2.new(1,-32,0,listHeight),Position=UDim2.fromOffset(16,50),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollingDirection=Enum.ScrollingDirection.Y,ScrollBarThickness=2,Parent=frame}); w:_bind(list,{ScrollBarImageColor3="BorderStrong"})
+	else
+		list=Create.New("Frame",{Size=UDim2.new(1,-32,0,listHeight),Position=UDim2.fromOffset(16,50),BackgroundTransparency=1,Parent=frame})
+	end
+	Create.List(gap).Parent=list
+	for _,choice in choices do self:_button(list,choice.Text or tostring(choice.Value),choice.Primary==true,choice.Danger==true,function() resolve(choice.Value) end,{FullWidth=true}) end
 	function handle:Resolve(v) resolve(v) end; function handle:Close() resolve(nil) end; function handle:IsOpen() return not self._resolved and layer:IsOpen() end; function handle:Await() if self._resolved then return self._result end; return self.Resolved:Wait() end; function handle:Destroy() self:Close(); self.Resolved:Destroy() end
 	return handle
 end
@@ -4441,7 +4510,7 @@ function Section.new(tab,options)
 	local column=options.Column==2 and 2 or 1
 	local span=options.Span or "Auto"; if span~="Auto" and span~=1 and span~=2 then error("[BobloUI] Section Span must be 'Auto', 1, or 2.",3) end
 	local layout=options.Layout or "Stack"; if layout~="Stack" and layout~="Grid" and layout~="Auto" then error("[BobloUI] Section Layout must be 'Stack', 'Grid', or 'Auto'.",3) end
-	local self=setmetatable({Id=options.Id,Title=options.Title,Description=options.Description,Collapsible=options.Collapsible==true,Collapsed=options.Collapsed==true,Column=column,Span=span,Layout=layout,_effectiveContentLayout=nil,_order=order,_implicit=options._implicit==true,_tab=tab,_window=tab._window,_janitor=Janitor.new(`Section[{options.Title or "Default"}]`),_controls={},_mounted=false,_visible=options.Visible~=false},Section)
+	local self=setmetatable({Id=options.Id,Title=options.Title,Description=options.Description,Collapsible=options.Collapsible==true,Collapsed=options.Collapsed==true,Column=column,Span=span,Layout=layout,_columnExplicit=options.Column~=nil,_effectiveContentLayout=nil,_order=order,_implicit=options._implicit==true,_tab=tab,_window=tab._window,_janitor=Janitor.new(`Section[{options.Title or "Default"}]`),_controls={},_mounted=false,_visible=options.Visible~=false},Section)
 	tab._janitor:Add(self,"Destroy",self); table.insert(tab._sections,self); if self.Id then self._window.Registry:Add(self,{Id=self.Id,Type="Section",Title=self.Title or "Section",Tab=tab.Id,Path=tab.Title,Persist=false}) end
 	self._janitor:Add(self._window.Tokens.Changed:Connect(function() if self._mounted then self:_applyTokens() end end)); if tab._mounted then self:_mount() end; tab:_scheduleSectionLayout(); return self
 end
@@ -4877,34 +4946,62 @@ function Tab:_applySectionLayout(layout)
 	self._twoColumn=twoColumn
 	if self._column1 then self._column1.Visible=false end; if self._column2 then self._column2.Visible=false end
 	local visible={}
-	for _,section in self._sections do if section._root and section._visible~=false then section._root.Parent=self._sectionHost; table.insert(visible,section) end end
-	local function heightOf(section) return math.max(1,math.floor((section._root and section._root.AbsoluteSize.Y or 1)+0.5)) end
-	local y=0; local pending=nil
+	for _,section in self._sections do
+		if section._root and section._visible~=false then
+			section._root.Parent=self._sectionHost
+			table.insert(visible,section)
+		end
+	end
+	local function heightOf(section)
+		return math.max(1,math.floor((section._root and section._root.AbsoluteSize.Y or 1)+0.5))
+	end
 	local half=if twoColumn then math.max(1,math.floor((available-gap)/2)) else available
-	local function placeFull(sec) sec._root.Size=UDim2.fromOffset(available,0); sec._root.Position=UDim2.fromOffset(0,y); y+=heightOf(sec)+gap end
-	local function placePair(a,b)
-		a._root.Size=UDim2.fromOffset(half,0); a._root.Position=UDim2.fromOffset(0,y)
-		b._root.Size=UDim2.fromOffset(available-gap-half,0); b._root.Position=UDim2.fromOffset(half+gap,y)
-		y+=math.max(heightOf(a),heightOf(b))+gap
-	end
 	if not twoColumn then
-		for _,sec in visible do placeFull(sec) end
-	else
-		for index,sec in visible do
-			local wantsFull=sec.Span==2
-			if sec.Span=="Auto" and index==#visible and pending==nil then wantsFull=true end
-			if wantsFull then
-				if pending then pending._root.Size=UDim2.fromOffset(half,0); pending._root.Position=UDim2.fromOffset(0,y); y+=heightOf(pending)+gap; pending=nil end
-				placeFull(sec)
-			else
-				if not pending then pending=sec else placePair(pending,sec); pending=nil end
-			end
+		local y=0
+		for _,sec in visible do
+			sec._root.Size=UDim2.fromOffset(available,0)
+			sec._root.Position=UDim2.fromOffset(0,y)
+			y+=heightOf(sec)+gap
 		end
-		if pending then
-			if pending.Span=="Auto" then placeFull(pending) else pending._root.Size=UDim2.fromOffset(half,0); pending._root.Position=UDim2.fromOffset(0,y); y+=heightOf(pending)+gap end
+		self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
+		return
+	end
+
+	-- Desktop uses a small masonry layout instead of row pairing. A tall card
+	-- in the left column must not create a matching blank hole under a short
+	-- card on the right. Full-span sections act as synchronization barriers.
+	local y1,y2=0,0
+	local onlyOne=#visible==1
+	local function placeColumn(sec,column)
+		local x=if column==1 then 0 else half+gap
+		local width=if column==1 then half else available-gap-half
+		local y=if column==1 then y1 else y2
+		sec._root.Size=UDim2.fromOffset(width,0)
+		sec._root.Position=UDim2.fromOffset(x,y)
+		local nextY=y+heightOf(sec)+gap
+		if column==1 then y1=nextY else y2=nextY end
+	end
+	local function placeFull(sec)
+		local y=math.max(y1,y2)
+		sec._root.Size=UDim2.fromOffset(available,0)
+		sec._root.Position=UDim2.fromOffset(0,y)
+		local nextY=y+heightOf(sec)+gap
+		y1,y2=nextY,nextY
+	end
+
+	for _,sec in visible do
+		local wantsFull=sec.Span==2 or (sec.Span=="Auto" and onlyOne)
+		if wantsFull then
+			placeFull(sec)
+		else
+			-- Respect an explicitly requested legacy column, otherwise fill the
+			-- shorter column. Section.new stores whether Column was explicit.
+			local column
+			if sec._columnExplicit then column=sec.Column else column=if y1<=y2 then 1 else 2 end
+			placeColumn(sec,column)
 		end
 	end
-	self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
+	self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,math.max(y1,y2)-gap))
 end
 
 function Tab:AddSection(options)
@@ -4948,7 +5045,7 @@ function Tab:_setSelected(selected: boolean)
 
 	local theme = self._window.Theme
 	self._label.TextColor3 = theme:Get(if selected then "Text" else "TextSecondary")
-	Icon.setColor(self._avatar, theme:Get(if selected then "Accent" else "TextTertiary"))
+	Icon.setColor(self._avatar, theme:Get(if selected then "Accent" else "AccentMuted"))
 
 	if selected then
 		self:_ensureMounted()
