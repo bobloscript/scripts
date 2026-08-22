@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.9.4-beta.1 - generated bundle, do not edit.
+	BobloUI v0.9.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/robscript/boblo-ui
-	Built: 2026-08-22T06:37:15.620Z
+	Built: 2026-08-22T06:48:00.820Z
 	Modules: 50
 ]]
 local __modules = {}
@@ -754,7 +754,7 @@ local Dark=__require("themes/Dark")
 local Light=__require("themes/Light")
 
 local BobloUI={}
-BobloUI.Version="0.9.4-beta.1"; BobloUI.ApiLevel=9; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.9.5-beta.1"; BobloUI.ApiLevel=9; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -1872,6 +1872,8 @@ Tokens.Profiles = {
 		FieldRadius = 8,
 		RowGap = 0,
 		SectionGap = 16,
+		ColumnGap = 14,
+		TwoColumnMinWidth = 500,
 		SectionPadding = 12,
 		PagePadding = 20,
 		HeaderHeight = 56,
@@ -1901,6 +1903,8 @@ Tokens.Profiles = {
 		FieldRadius = 7,
 		RowGap = 0,
 		SectionGap = 10,
+		ColumnGap = 12,
+		TwoColumnMinWidth = 460,
 		SectionPadding = 9,
 		PagePadding = 18,
 		HeaderHeight = 50,
@@ -1930,6 +1934,8 @@ Tokens.Profiles = {
 		FieldRadius = 9,
 		RowGap = 0,
 		SectionGap = 15,
+		ColumnGap = 14,
+		TwoColumnMinWidth = 560,
 		SectionPadding = 14,
 		PagePadding = 14,
 		HeaderHeight = 54,
@@ -3931,13 +3937,16 @@ local Icon=__require("primitives/Icon")
 local Button=__require("controls/Button"); local Toggle=__require("controls/Toggle"); local Slider=__require("controls/Slider"); local Dropdown=__require("controls/Dropdown"); local TextField=__require("controls/TextField"); local Keybind=__require("controls/Keybind"); local ColorPicker=__require("controls/ColorPicker"); local Paragraph=__require("controls/Paragraph"); local Divider=__require("controls/Divider"); local Status=__require("controls/Status")
 local Section={}; Section.__index=Section
 function Section.new(tab,options)
-	options=options or {}; local self=setmetatable({Id=options.Id,Title=options.Title,Description=options.Description,Collapsible=options.Collapsible==true,Collapsed=options.Collapsed==true,Column=options.Column or 1,_implicit=options._implicit==true,_tab=tab,_window=tab._window,_janitor=Janitor.new(`Section[{options.Title or "Default"}]`),_controls={},_mounted=false,_visible=options.Visible~=false},Section)
+	options=options or {}
+	local order=#tab._sections+1
+	local column=options.Column==2 and 2 or 1
+	local self=setmetatable({Id=options.Id,Title=options.Title,Description=options.Description,Collapsible=options.Collapsible==true,Collapsed=options.Collapsed==true,Column=column,_order=order,_implicit=options._implicit==true,_tab=tab,_window=tab._window,_janitor=Janitor.new(`Section[{options.Title or "Default"}]`),_controls={},_mounted=false,_visible=options.Visible~=false},Section)
 	tab._janitor:Add(self,"Destroy",self); table.insert(tab._sections,self); if self.Id then self._window.Registry:Add(self,{Id=self.Id,Type="Section",Title=self.Title or "Section",Tab=tab.Id,Path=tab.Title,Persist=false}) end
-	self._janitor:Add(self._window.Tokens.Changed:Connect(function() if self._mounted then self:_applyTokens() end end)); if tab._mounted then self:_mount() end; return self
+	self._janitor:Add(self._window.Tokens.Changed:Connect(function() if self._mounted then self:_applyTokens() end end)); if tab._mounted then self:_mount() end; tab:_scheduleSectionLayout(); return self
 end
 function Section:_mount()
 	if self._mounted then return end; self._mounted=true; local w=self._window; local t=w.Tokens
-	self._root=Surface.new(w,{Name="Section",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BorderSizePixel=0,Visible=self._visible,Parent=self._tab:_sectionParent(self.Column)},{Token=if self._implicit then "Canvas" else "Surface",Stroke=not self._implicit,StrokeToken="BorderSubtle",StrokeTransparency=0.72,Corner=if self._implicit then 0 else t:Get("CornerMd")}); self._janitor:Add(self._root)
+	self._root=Surface.new(w,{Name="Section",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BorderSizePixel=0,LayoutOrder=self._order,Visible=self._visible,Parent=self._tab:_sectionParent(self.Column)},{Token=if self._implicit then "Canvas" else "Surface",Stroke=not self._implicit,StrokeToken="BorderSubtle",StrokeTransparency=0.72,Corner=if self._implicit then 0 else t:Get("CornerMd")}); self._janitor:Add(self._root)
 	local pad=if self._implicit then 0 else t:Get("SectionPadding"); self._padding=Create.New("UIPadding",{PaddingTop=UDim.new(0,pad),PaddingBottom=UDim.new(0,pad),PaddingLeft=UDim.new(0,pad),PaddingRight=UDim.new(0,pad),Parent=self._root}); self._rootLayout=Create.List(if self._implicit then t:Get("RowGap") else 8); self._rootLayout.Parent=self._root
 	if not self._implicit and self.Title then
 		local headerClass=if self.Collapsible then "TextButton" else "Frame"; self._header=Create.New(headerClass,{Size=UDim2.new(1,0,0,self.Description and 38 or 24),BackgroundTransparency=1,BorderSizePixel=0,Text=headerClass=="TextButton" and "" or nil,AutoButtonColor=headerClass=="TextButton" and false or nil,Parent=self._root})
@@ -3971,7 +3980,7 @@ function Section:SetTitle(t) self.Title=t; if self._title then self._title.Text=
 function Section:SetVisible(v) self._visible=v==true; if self._root then self._root.Visible=self._visible end; return self end
 function Section:SetCollapsed(v) self.Collapsed=v==true; if self._content then self._content.Visible=not self.Collapsed end; if self._chevron then self._chevron.Rotation=if self.Collapsed then -90 else 0 end; return self end
 function Section:GetInstance() return self._root end
-function Section:Destroy() if self._destroyed then return end; self._destroyed=true; self._tab._janitor:Release(self); if self.Id then self._window.Registry:Remove(self) end; local p=table.find(self._tab._sections,self); if p then table.remove(self._tab._sections,p) end; for _,control in table.clone(self._controls) do control:Destroy() end; self._janitor:Destroy() end
+function Section:Destroy() if self._destroyed then return end; self._destroyed=true; self._tab._janitor:Release(self); if self.Id then self._window.Registry:Remove(self) end; local p=table.find(self._tab._sections,self); if p then table.remove(self._tab._sections,p) end; for _,control in table.clone(self._controls) do control:Destroy() end; self._janitor:Destroy(); if not self._tab._destroyed then self._tab:_scheduleSectionLayout() end end
 return Section
 
 end
@@ -4081,6 +4090,8 @@ function Tab.new(window, options)
 		_selected = false,
 		_sections = {},
 		_defaultSection = nil,
+		_twoColumn = false,
+		_layoutPending = false,
 	}, Tab)
 
 	window._janitor:Add(self,"Destroy",self)
@@ -4161,6 +4172,7 @@ function Tab.new(window, options)
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 4,
 		ScrollBarImageTransparency = 0.4,
+		ClipsDescendants = true,
 		Parent = window._content,
 	})
 	self._janitor:Add(self._page)
@@ -4168,14 +4180,16 @@ function Tab.new(window, options)
 	self._pagePadding = New("UIPadding", {
 		PaddingTop = UDim.new(0, tokens:Get("PagePadding")),
 		PaddingBottom = UDim.new(0, tokens:Get("PagePadding")),
-		PaddingLeft = UDim.new(0, tokens:Get("PagePadding")),
-		PaddingRight = UDim.new(0, tokens:Get("PagePadding")),
+		PaddingLeft = UDim.new(0, 0),
+		PaddingRight = UDim.new(0, 0),
 		Parent = self._page,
 	})
 	self._introHeight = if self.Description then 54 else 36
+	local pagePadding = tokens:Get("PagePadding")
 	self._pageIntro = New("Frame", {
 		Name = "PageIntro",
-		Size = UDim2.new(1, 0, 0, self._introHeight),
+		Size = UDim2.new(1, -(pagePadding * 2), 0, self._introHeight),
+		Position = UDim2.fromOffset(pagePadding, 0),
 		BackgroundTransparency = 1,
 		Parent = self._page,
 	})
@@ -4204,16 +4218,16 @@ function Tab.new(window, options)
 	end
 	self._sectionHost = New("Frame", {
 		Name = "SectionHost",
-		Size = UDim2.new(1, 0, 0, 0),
-		Position = UDim2.fromOffset(0, self._introHeight),
+		Size = UDim2.new(1, -(pagePadding * 2), 0, 0),
+		Position = UDim2.fromOffset(pagePadding, self._introHeight),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Parent = self._page,
 	})
 	self._emptyState = New("TextLabel", {
 		Name = "EmptyState",
-		Size = UDim2.new(1, -40, 0, 54),
-		Position = UDim2.new(0, 20, 0, self._introHeight + 24),
+		Size = UDim2.new(1, -(pagePadding * 2), 0, 54),
+		Position = UDim2.fromOffset(pagePadding, self._introHeight + 24),
 		BackgroundTransparency = 1,
 		Font = window.Fonts.Regular,
 		TextSize = tokens:Get("FontBody"),
@@ -4225,10 +4239,13 @@ function Tab.new(window, options)
 		Parent = self._page,
 	})
 	window:_bind(self._emptyState, { TextColor3 = "TextTertiary" })
-	self._column1 = New("Frame", {Name="Column1", Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Parent=self._sectionHost})
-	self._column2 = New("Frame", {Name="Column2", Size=UDim2.new(0.5,-8,0,0), Position=UDim2.new(0.5,8,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Visible=false, Parent=self._sectionHost})
+	self._column1 = New("Frame", {Name="Column1", Size=UDim2.new(1,0,0,0), Position=UDim2.fromOffset(0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Parent=self._sectionHost})
+	self._column2 = New("Frame", {Name="Column2", Size=UDim2.new(1,0,0,0), Position=UDim2.fromOffset(0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, Visible=false, Parent=self._sectionHost})
 	self._column1Layout = Create.List(tokens:Get("SectionGap")); self._column1Layout.Parent = self._column1
 	self._column2Layout = Create.List(tokens:Get("SectionGap")); self._column2Layout.Parent = self._column2
+	self._janitor:Add(self._sectionHost:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		self:_scheduleSectionLayout()
+	end))
 
 	window:_bind(self._page, { ScrollBarImageColor3 = "BorderStrong" })
 
@@ -4252,29 +4269,82 @@ end
 
 
 function Tab:_applyTokens()
-	local t=self._window.Tokens
+	local t = self._window.Tokens
+	local pagePadding = t:Get("PagePadding")
 	if self._pagePadding then
-		local p=UDim.new(0,t:Get("PagePadding")); self._pagePadding.PaddingTop=p; self._pagePadding.PaddingBottom=p; self._pagePadding.PaddingLeft=p; self._pagePadding.PaddingRight=p
+		self._pagePadding.PaddingTop = UDim.new(0, pagePadding)
+		self._pagePadding.PaddingBottom = UDim.new(0, pagePadding)
+		self._pagePadding.PaddingLeft = UDim.new(0, 0)
+		self._pagePadding.PaddingRight = UDim.new(0, 0)
+	end
+	if self._pageIntro then
+		self._pageIntro.Position = UDim2.fromOffset(pagePadding, 0)
+		self._pageIntro.Size = UDim2.new(1, -(pagePadding * 2), 0, self._introHeight)
+	end
+	if self._sectionHost then
+		self._sectionHost.Position = UDim2.fromOffset(pagePadding, self._introHeight)
+		self._sectionHost.Size = UDim2.new(1, -(pagePadding * 2), 0, 0)
+	end
+	if self._emptyState then
+		self._emptyState.Position = UDim2.fromOffset(pagePadding, self._introHeight + 24)
+		self._emptyState.Size = UDim2.new(1, -(pagePadding * 2), 0, 54)
+		self._emptyState.TextSize = t:Get("FontBody")
 	end
 	if self._pageTitle then self._pageTitle.TextSize=t:Get("FontHeading") end
 	if self._pageDescription then self._pageDescription.TextSize=t:Get("FontSmall") end
-	if self._emptyState then self._emptyState.TextSize=t:Get("FontBody") end
 	if self._column1Layout then self._column1Layout.Padding=UDim.new(0,t:Get("SectionGap")) end
 	if self._column2Layout then self._column2Layout.Padding=UDim.new(0,t:Get("SectionGap")) end
 	for _,section in self._sections do if section._applyTokens then section:_applyTokens() end end
+	self:_scheduleSectionLayout()
 end
 
 function Tab:_sectionParent(column)
-	if self._window._layout == "Wide" and column == 2 then return self._column2 end
+	if self._twoColumn and column == 2 then return self._column2 end
 	return self._column1
 end
 
+function Tab:_scheduleSectionLayout()
+	if self._layoutPending or self._destroyed then return end
+	self._layoutPending = true
+	local thread = task.defer(function()
+		self._layoutPending = false
+		if not self._destroyed then self:_applySectionLayout(self._window._layout) end
+	end)
+	self._janitor:Add(thread, nil, "sectionLayoutTask")
+end
+
 function Tab:_applySectionLayout(layout)
-	local wide = layout == "Wide"
-	self._column1.Size = if wide then UDim2.new(0.5, -8, 0, 0) else UDim2.new(1, 0, 0, 0)
-	self._column2.Visible = wide
+	if not self._sectionHost or not self._sectionHost.Parent then return end
+	local t = self._window.Tokens
+	local available = math.floor(self._sectionHost.AbsoluteSize.X + 0.5)
+	if available <= 0 then
+		available = math.max(0, math.floor(self._page.AbsoluteSize.X - (t:Get("PagePadding") * 2) + 0.5))
+	end
+
+	local gap = t:Get("ColumnGap")
+	local twoColumn = layout == "Wide" and available >= t:Get("TwoColumnMinWidth")
+	self._twoColumn = twoColumn
+	self._column1.Position = UDim2.fromOffset(0, 0)
+
+	if twoColumn then
+		local leftWidth = math.max(1, math.floor((available - gap) / 2))
+		local rightWidth = math.max(1, available - gap - leftWidth)
+		self._column1.Size = UDim2.fromOffset(leftWidth, 0)
+		self._column2.Size = UDim2.fromOffset(rightWidth, 0)
+		self._column2.Position = UDim2.fromOffset(leftWidth + gap, 0)
+		self._column2.Visible = true
+	else
+		self._column1.Size = UDim2.new(1, 0, 0, 0)
+		self._column2.Size = UDim2.new(1, 0, 0, 0)
+		self._column2.Position = UDim2.fromOffset(0, 0)
+		self._column2.Visible = false
+	end
+
 	for _, section in self._sections do
-		if section._root then section._root.Parent = self:_sectionParent(section.Column) end
+		if section._root then
+			local parent = self:_sectionParent(section.Column)
+			if section._root.Parent ~= parent then section._root.Parent = parent end
+		end
 	end
 end
 
@@ -4350,9 +4420,11 @@ function Tab:SetDescription(description: string?)
 	self.Description=description
 	if self._pageDescription then self._pageDescription:Destroy(); self._pageDescription=nil end
 	self._introHeight=if description then 54 else 36
-	if self._pageIntro then self._pageIntro.Size=UDim2.new(1,0,0,self._introHeight) end
-	if self._sectionHost then self._sectionHost.Position=UDim2.fromOffset(0,self._introHeight) end
-	if self._emptyState then self._emptyState.Position=UDim2.new(0,20,0,self._introHeight+24) end
+	local pagePadding = self._window.Tokens:Get("PagePadding")
+	if self._pageIntro then self._pageIntro.Size=UDim2.new(1,-(pagePadding*2),0,self._introHeight); self._pageIntro.Position=UDim2.fromOffset(pagePadding,0) end
+	if self._sectionHost then self._sectionHost.Position=UDim2.fromOffset(pagePadding,self._introHeight); self._sectionHost.Size=UDim2.new(1,-(pagePadding*2),0,0) end
+	if self._emptyState then self._emptyState.Position=UDim2.fromOffset(pagePadding,self._introHeight+24); self._emptyState.Size=UDim2.new(1,-(pagePadding*2),0,54) end
+	self:_scheduleSectionLayout()
 	if description and self._pageIntro then
 		self._pageDescription=New("TextLabel",{Size=UDim2.new(1,0,0,16),Position=UDim2.fromOffset(0,26),BackgroundTransparency=1,Font=self._window.Fonts.Regular,TextSize=self._window.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,Text=self._window.Locale:Resolve(description),Parent=self._pageIntro})
 		self._window:_bind(self._pageDescription,{TextColor3="TextTertiary"})
@@ -4767,9 +4839,11 @@ function Window:_buildBody()
 		Position = UDim2.new(0, tokens:Get("SidebarWidth"), 0, 0),
 		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
+		ClipsDescendants = true,
 		Parent = self._body,
 	})
 	self:_bind(self._content, {BackgroundColor3 = "Canvas"})
+	self._janitor:Add(self._content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:_scheduleSectionLayouts() end))
 end
 
 function Window:_buildResizeGrip()
@@ -4792,12 +4866,17 @@ function Window:_buildResizeGrip()
 		local startSize = self._root.AbsoluteSize
 		self.Input:CapturePointer(self._grip, input, function(move)
 			local delta = move.Position - startPosition
-			self._size = UDim2.fromOffset(
-				math.max(self._minSize.X, startSize.X + delta.X),
-				math.max(self._minSize.Y, startSize.Y + delta.Y)
-			)
+			local _, safeSize = self.Device:SafeArea()
+			local maxWidth = math.max(320, safeSize.X - 40)
+			local maxHeight = math.max(260, safeSize.Y - 40)
+			local minWidth = math.min(self._minSize.X, maxWidth)
+			local minHeight = math.min(self._minSize.Y, maxHeight)
+			local width = math.clamp(startSize.X + delta.X, minWidth, maxWidth)
+			local height = math.clamp(startSize.Y + delta.Y, minHeight, maxHeight)
+			self._size = UDim2.fromOffset(width, height)
 			if self._layout ~= "Drawer" then self._root.Size = self._size end
-		end, function() end)
+			self:_scheduleSectionLayouts()
+		end, function() self:_scheduleSectionLayouts() end)
 	end))
 end
 
@@ -4818,6 +4897,17 @@ function Window:_attachDrag(handle: GuiObject)
 end
 
 -- ===== layout ====================================================
+
+function Window:_scheduleSectionLayouts()
+	if self._sectionLayoutPending or self._destroying then return end
+	self._sectionLayoutPending = true
+	local thread = task.defer(function()
+		self._sectionLayoutPending = false
+		if self._destroying then return end
+		for _, tab in self._tabs do tab:_applySectionLayout(self._layout) end
+	end)
+	self._janitor:Add(thread, nil, "sectionLayoutsTask")
+end
 
 function Window:_applyLayout(layout: string, initial: boolean?)
 	if self._layout == layout and not initial then
@@ -4894,6 +4984,7 @@ function Window:_applyTokens()
 		tab._button.Size = UDim2.new(1, 0, 0, tokens:Get("NavItemHeight"))
 		tab._label.TextSize = tokens:Get("FontBody")
 	end
+	self:_scheduleSectionLayouts()
 end
 
 function Window:_applyGeometry()
@@ -4904,15 +4995,13 @@ function Window:_applyGeometry()
 		self._root.Size = UDim2.fromOffset(size.X, size.Y)
 	else
 		self._root.AnchorPoint = Vector2.new(0.5, 0.5)
-		if self._root.Position.X.Scale == 0 then
-			self._root.Position = UDim2.fromScale(0.5, 0.5)
-		end
-		local viewport = self.Device.Viewport
-		self._root.Size = UDim2.fromOffset(
-			math.min(self._size.X.Offset, viewport.X - 40),
-			math.min(self._size.Y.Offset, viewport.Y - 40)
-		)
+		if self._root.Position.X.Scale == 0 then self._root.Position = UDim2.fromScale(0.5, 0.5) end
+		local _, safeSize = self.Device:SafeArea()
+		local maxWidth = math.max(320, safeSize.X - 40)
+		local maxHeight = math.max(260, safeSize.Y - 40)
+		self._root.Size = UDim2.fromOffset(math.min(self._size.X.Offset, maxWidth), math.min(self._size.Y.Offset, maxHeight))
 	end
+	self:_scheduleSectionLayouts()
 end
 
 function Window:_refreshHeaderTitle()
