@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.10.3-beta.1 - generated bundle, do not edit.
+	BobloUI v0.10.4-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T10:00:01.670Z
+	Built: 2026-08-23T10:18:49.383Z
 	Modules: 55
 ]]
 local __modules = {}
@@ -839,7 +839,7 @@ local Navigation=__require("services/Navigation")
 local HttpService=game:GetService("HttpService")
 
 local BobloUI={}
-BobloUI.Version="0.10.3-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.10.4-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -5000,7 +5000,7 @@ function Tab:_applySectionLayout(layout)
 			sec._root.Position=UDim2.fromOffset(0,y)
 			y+=heightOf(sec)+gap
 		end
-		self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
+		self._sectionHost.Size=UDim2.new(1,-(t:Get("PagePadding")*2),0,math.max(0,y-gap))
 		return
 	end
 	local leftWidth=math.max(1,math.floor((available-gap)/2))
@@ -5032,7 +5032,7 @@ function Tab:_applySectionLayout(layout)
 			y+=rowHeight+gap
 		end
 	end
-	self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
+	self._sectionHost.Size=UDim2.new(1,-(t:Get("PagePadding")*2),0,math.max(0,y-gap))
 end
 
 function Tab:AddSection(options)
