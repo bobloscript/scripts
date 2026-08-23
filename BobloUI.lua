@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.11.0-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.1-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T10:44:12.753Z
+	Built: 2026-08-23T10:56:46.238Z
 	Modules: 63
 ]]
 local __modules = {}
@@ -945,7 +945,7 @@ local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.11.0-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.1-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
 BobloUI.Sources={}
 function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
 function BobloUI.Sources.Players(options)
@@ -5563,6 +5563,8 @@ function Window.new(context, options)
 		_visibilityToken = 0,
 		_topbarItems = {},
 		_restoreSpec = options.RestoreButton or {},
+			_backgroundImageSource = options.BackgroundImage,
+			_backgroundImageTransparency = options.BackgroundImageTransparency,
 	}, Window)
 
 	self:_build()
@@ -5649,7 +5651,7 @@ function Window:_build()
 	self:_buildFooter()
 	self:_buildResizeGrip()
 	self:SetWindowOpacity(self._windowOpacity)
-	if options.BackgroundImage then self:SetBackgroundImage(options.BackgroundImage, options.BackgroundImageTransparency) end
+	if self._backgroundImageSource then self:SetBackgroundImage(self._backgroundImageSource, self._backgroundImageTransparency) end
 
 	-- Covers a theme swap so 2000 instant assignments read as one transition
 	-- instead of a flicker. Cheaper than tweening every binding.
