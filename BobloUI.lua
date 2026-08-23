@@ -1,8 +1,8 @@
 --[[
-	BobloUI v0.10.4-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.0-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T10:18:49.383Z
-	Modules: 55
+	Built: 2026-08-23T10:44:12.753Z
+	Modules: 63
 ]]
 local __modules = {}
 local __cache = {}
@@ -22,6 +22,7 @@ local Create=__require("runtime/Create")
 local Janitor=__require("runtime/Janitor")
 local Signal=__require("runtime/Signal")
 local Validate=__require("runtime/Validate")
+local Icon=__require("primitives/Icon")
 local Base={}; Base.__index=Base
 
 local function originSource(origin) return type(origin)=="table" and origin.Source or nil end
@@ -29,7 +30,7 @@ local function isSilent(origin) return type(origin)=="table" and origin.Silent==
 
 function Base.init(self,section,typeName,options,config)
 	options=options or {}; config=config or {}; Validate.Control(typeName,options)
-	self.Type=typeName; self.Id=options.Id; self.Title=options.Title or ""; self.Description=options.Description; self.Keywords=options.Keywords or {}; self.Callback=options.Callback
+	self.Type=typeName; self.Id=options.Id; self.Title=options.Title or ""; self.Description=options.Description; self.Keywords=options.Keywords or {}; self.Callback=options.Callback; self.Icon=options.Icon; self.IconColor=options.IconColor
 	self._section=section; self._window=section._window; self._janitor=Janitor.new(`${typeName}[{self.Id or self.Title}]`); self._destroyed=false; self._mounted=false; self._order=options.Order or 0
 	self._manualVisible=options.Visible~=false; self._dependencyVisible=true; self._manualDisabled=(options.Disabled==true or type(options.Disabled)=="string"); self._dependencyEnabled=true
 	self._disabledReason=type(options.Disabled)=="string" and options.Disabled or nil; self._loading=false; self._tooltip=options.Tooltip; self._contextMenu=options.ContextMenu
@@ -51,7 +52,7 @@ function Base.init(self,section,typeName,options,config)
 			end
 		end))
 	end
-	self._janitor:Add(self._window.Theme.Changed:Connect(function() if self._mounted then self:_render(self:GetValue()); self:_applyDisabled(); self:_applyHoverVisual(false) end end))
+	self._janitor:Add(self._window.Theme.Changed:Connect(function() if self._mounted then self:_render(self:GetValue()); self:_applyDisabled(); self:_applyHoverVisual(false); if self._controlIcon then local c=self.IconColor; if typeof(c)=="Color3" then Icon.setColor(self._controlIcon,c) elseif type(c)=="string" then Icon.setColor(self._controlIcon,self._window.Theme:Get(c)) else Icon.setColor(self._controlIcon,self._window.Theme:Get("TextSecondary")) end end end end))
 	self._janitor:Add(self._window.Tokens.Changed:Connect(function() if self._mounted then self:_applyTokens() end end))
 	self:_bindDependency(options.VisibleWhen,"visible"); self:_bindDependency(options.EnabledWhen,"enabled")
 end
@@ -104,8 +105,13 @@ function Base:_mount()
 	Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("ControlRadius")),Parent=self._root}); w:_bind(self._root,{BackgroundColor3="ControlHover"})
 	self._separator=Create.New("Frame",{Name="Separator",Size=UDim2.new(1,-pad*2,0,1),Position=UDim2.new(0,pad,1,-1),BorderSizePixel=0,BackgroundTransparency=0.72,Parent=self._root}); w:_bind(self._separator,{BackgroundColor3="BorderSubtle"})
 
-	local titleWidth=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76,0,t:Get("ControlHeight")) else UDim2.new(0.48,-pad,0,t:Get("ControlHeight"))
-	self._titleLabel=Create.New("TextLabel",{Size=titleWidth,Position=UDim2.fromOffset(pad,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Title),Parent=self._root}); w:_bind(self._titleLabel,{TextColor3="Text"})
+	local iconOffset=if self.Icon then 22 else 0
+	if self.Icon then
+		self._controlIcon=Icon.new(w,self.Icon,{Size=UDim2.fromOffset(t:Get("IconSm"),t:Get("IconSm")),Position=UDim2.fromOffset(pad,math.floor((t:Get("ControlHeight")-t:Get("IconSm"))/2)),Parent=self._root})
+		local c=self.IconColor; if typeof(c)=="Color3" then Icon.setColor(self._controlIcon,c) elseif type(c)=="string" then Icon.setColor(self._controlIcon,w.Theme:Get(c)) else Icon.setColor(self._controlIcon,w.Theme:Get("TextSecondary")) end
+	end
+	local titleWidth=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76-iconOffset,0,t:Get("ControlHeight")) else UDim2.new(0.48,-pad-iconOffset,0,t:Get("ControlHeight"))
+	self._titleLabel=Create.New("TextLabel",{Size=titleWidth,Position=UDim2.fromOffset(pad+iconOffset,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Title),Parent=self._root}); w:_bind(self._titleLabel,{TextColor3="Text"})
 	if self.Description then
 		self._descLabel=Create.New("TextLabel",{Size=UDim2.new(if self._layoutStyle=="Stacked" then 1 else 0.74,-pad*2,0,15),Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-10),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=self:_resolve(self.Description),Parent=self._root}); w:_bind(self._descLabel,{TextColor3="TextTertiary"})
 	end
@@ -116,6 +122,7 @@ function Base:_mount()
 		self._valueHost=Create.New("Frame",{Size=UDim2.new(0.52,-pad,0,t:Get("ControlHeight")),Position=UDim2.new(0.48,0,0,0),BackgroundTransparency=1,Parent=self._root})
 	end
 	if self._mountValue then self:_mountValue(self._valueHost) end
+	if self._applyValueTokens then self:_applyValueTokens() end
 
 	self._janitor:Add(self._root.MouseEnter:Connect(function() self:_applyHoverVisual(true) end))
 	self._janitor:Add(self._root.MouseLeave:Connect(function() self:_applyHoverVisual(false) end))
@@ -137,7 +144,9 @@ end
 function Base:_applyTokens()
 	if not self._root then return end; local t=self._window.Tokens; self._layoutStyle=self:_effectiveLayout(); local h=self:_measure(); local pad=t:Get("ControlPadding")
 	self._root.Size=UDim2.new(1,0,0,h); local corner=self._root:FindFirstChildOfClass("UICorner"); if corner then corner.CornerRadius=UDim.new(0,t:Get("ControlRadius")) end
-	if self._titleLabel then self._titleLabel.Position=UDim2.fromOffset(pad,0); self._titleLabel.TextSize=t:Get("FontBody"); self._titleLabel.Size=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76,0,t:Get("ControlHeight")) else UDim2.new(0.48,-pad,0,t:Get("ControlHeight")) end
+	local iconOffset=if self.Icon then 22 else 0
+	if self._controlIcon then self._controlIcon.Size=UDim2.fromOffset(t:Get("IconSm"),t:Get("IconSm")); self._controlIcon.Position=UDim2.fromOffset(pad,math.floor((t:Get("ControlHeight")-t:Get("IconSm"))/2)) end
+	if self._titleLabel then self._titleLabel.Position=UDim2.fromOffset(pad+iconOffset,0); self._titleLabel.TextSize=t:Get("FontBody"); self._titleLabel.Size=if self._layoutStyle=="Stacked" then UDim2.new(1,-pad*2-76-iconOffset,0,t:Get("ControlHeight")) else UDim2.new(0.48,-pad-iconOffset,0,t:Get("ControlHeight")) end
 	if self._descLabel then self._descLabel.Position=UDim2.fromOffset(pad,t:Get("ControlHeight")-10); self._descLabel.TextSize=t:Get("FontSmall") end
 	if self._separator then self._separator.Size=UDim2.new(1,-pad*2,0,1); self._separator.Position=UDim2.new(0,pad,1,-1) end
 	if self._valueHost then
@@ -155,6 +164,12 @@ end
 function Base:SetTitle(text) self.Title=text; if self._titleLabel then self._titleLabel.Text=self:_resolve(text) end; self._window.Registry:Update(self,{Title=text}); return self end
 function Base:SetDescription(text) self.Description=text; if self._descLabel then self._descLabel.Text=self:_resolve(text or "") end; self._window.Registry:Update(self,{Description=text or ""}); if self._mounted then self:_applyTokens() end; return self end
 function Base:SetKeywords(words) self.Keywords=words or {}; self._window.Registry:Update(self,{Keywords=self.Keywords}); return self end
+function Base:SetIcon(icon,color)
+	self.Icon=icon; if color~=nil then self.IconColor=color end
+	if self._controlIcon then self._controlIcon:Destroy(); self._controlIcon=nil end
+	if self._root and icon then local t=self._window.Tokens; local pad=t:Get("ControlPadding"); self._controlIcon=Icon.new(self._window,icon,{Size=UDim2.fromOffset(t:Get("IconSm"),t:Get("IconSm")),Position=UDim2.fromOffset(pad,math.floor((t:Get("ControlHeight")-t:Get("IconSm"))/2)),Parent=self._root}); local c=self.IconColor; if typeof(c)=="Color3" then Icon.setColor(self._controlIcon,c) elseif type(c)=="string" then Icon.setColor(self._controlIcon,self._window.Theme:Get(c)) else Icon.setColor(self._controlIcon,self._window.Theme:Get("TextSecondary")) end; self:_applyTokens() end
+	return self
+end
 function Base:_applyVisible() local visible=self._manualVisible and self._dependencyVisible; if self._root then self._root.Visible=visible end; self._window.Registry:Update(self,{Hidden=not visible}); if self._section and self._section._mounted then self._section:_refreshSeparators() end end
 function Base:SetVisible(v) self._manualVisible=v==true; self:_applyVisible(); return self end
 function Base:IsVisible() return self._manualVisible and self._dependencyVisible end
@@ -241,6 +256,36 @@ end
 function Button:_refreshText() Base._refreshText(self); if self._button and not self._loading then self._button.Text=self:_resolve(self.Text) end end
 function Button:_applyValueTokens() if self._button then self._button.Size=UDim2.new(1,0,0,self._window.Tokens:Get("FieldHeight")); self._button.TextSize=self._window.Tokens:Get("FontBody") end end
 return Button
+
+end
+
+__modules["controls/Code"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Base=__require("controls/Base")
+local Env=__require("runtime/Env")
+local Code=setmetatable({}, {__index=Base}); Code.__index=Code
+function Code.new(section,options)
+	options=options or {}; local self=setmetatable({},Code)
+	self.Code=tostring(options.Code or options.Content or "")
+	self.Height=math.max(72,tonumber(options.Height) or 150)
+	self.Copy=options.Copy~=false
+	self.Language=options.Language or "lua"
+	Base.init(self,section,"Code",options,{Stateful=false,Default=nil,Layout="Stacked"}); return Base.finish(self)
+end
+function Code:_measure() local t=self._window.Tokens; return t:Get("ControlHeight")+self.Height+12+(self.Description and 12 or 0) end
+function Code:_mountValue(host)
+	local w=self._window; local t=w.Tokens
+	self._box=Create.New("TextBox",{Size=UDim2.new(1,0,0,self.Height),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=false,MultiLine=true,TextEditable=false,TextWrapped=false,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,Font=Enum.Font.Code,TextSize=12,Text=self.Code,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._box}); Create.New("UIPadding",{PaddingTop=UDim.new(0,10),PaddingBottom=UDim.new(0,10),PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._box}); local s=Create.New("UIStroke",{Thickness=1,Transparency=0.58,Parent=self._box}); w:_bind(s,{Color="BorderSubtle"}); w:_bind(self._box,{BackgroundColor3="ControlInset",TextColor3="TextSecondary"})
+	if self.Copy then
+		self._copy=Create.New("TextButton",{Size=UDim2.fromOffset(48,24),Position=UDim2.new(1,-8,0,8),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=0,BorderSizePixel=0,Text="Copy",Font=w.Fonts.Medium,TextSize=t:Get("FontCaption"),Parent=self._box}); Create.New("UICorner",{CornerRadius=UDim.new(0,6),Parent=self._copy}); w:_bind(self._copy,{BackgroundColor3="SurfaceRaised",TextColor3="TextSecondary"}); self._janitor:Add(self._copy.MouseButton1Click:Connect(function() Env.SetClipboard(self.Code); if w.Notify then w.Notify:Push({Title="Code copied",Variant="Success",Duration=2}) end end))
+	end
+end
+function Code:_applyValueTokens() if self._valueHost then self._valueHost.Size=UDim2.new(1,-self._window.Tokens:Get("ControlPadding")*2,0,self.Height) end; if self._box then self._box.Size=UDim2.new(1,0,0,self.Height) end end
+function Code:SetCode(text) self.Code=tostring(text or ""); if self._box then self._box.Text=self.Code end; return self end
+function Code:GetCode() return self.Code end
+function Code:CopyCode() Env.SetClipboard(self.Code); return self.Code end
+return Code
 
 end
 
@@ -391,35 +436,59 @@ local Icon=__require("primitives/Icon")
 local Dropdown=setmetatable({}, {__index=Base}); Dropdown.__index=Dropdown
 
 local ROW_HEIGHT=32
+local RICH_ROW_HEIGHT=48
 local ROW_GAP=2
 local MAX_VISIBLE_ROWS=7
 
 local function normalize(options)
 	local out={}
 	for _,o in options or {} do
-		if type(o)=="table" and o.Value~=nil then table.insert(out,{Value=o.Value,Label=tostring(o.Label or o.Value),Icon=o.Icon})
+		if type(o)=="table" and o.Value~=nil then
+			table.insert(out,{Value=o.Value,Label=tostring(o.Title or o.Label or o.Value),Description=o.Description or o.Desc,Icon=o.Icon,Locked=o.Locked==true,LockedReason=o.LockedReason,Callback=o.Callback})
 		else table.insert(out,{Value=o,Label=tostring(o)}) end
 	end
 	return out
 end
 local function contains(list,value) for _,v in list do if v==value then return true end end; return false end
+local function findOption(options,value) for _,o in options do if o.Value==value then return o end end end
+local function rowHeight(o) return o and (o.Description or o.Icon or o.Locked) and RICH_ROW_HEIGHT or ROW_HEIGHT end
 
 function Dropdown.new(section,options)
 	local self=setmetatable({},Dropdown)
 	self.Multi=options.Multi==true
 	self.Style=options.Style or "Dropdown"; if self.Style=="Segmented" and self.Multi then error("[BobloUI] segmented Dropdown does not support Multi=true.",3) end
-	self.Searchable=if options.Searchable==nil then #(options.Options or {})>8 else options.Searchable
+	self.Source=options.Source
+	self.Searchable=if options.Searchable==nil then #(options.Options or {})>8 or self.Source~=nil else options.Searchable
 	self.AllowNone=options.AllowNone==true; self.Max=options.Max; self.Placeholder=options.Placeholder or "Select..."
 	self._options=normalize(options.Options or {}); self._popup=nil
 	local default=options.Default; if self.Multi and default==nil then default={} end
-	Base.init(self,section,"Dropdown",options,{Stateful=true,Default=default,Adaptive=true}); return Base.finish(self)
+	Base.init(self,section,"Dropdown",options,{Stateful=true,Default=default,Adaptive=true})
+	self:_bindSource()
+	return Base.finish(self)
 end
-
+function Dropdown:_bindSource()
+	if self.Source==nil then return end
+	local source=self.Source
+	local signals={}
+	if type(source)=="table" then signals=source.Signals or source.RefreshOn or {} end
+	for _,signal in signals do if typeof(signal)=="RBXScriptSignal" then self._janitor:Add(signal:Connect(function() task.defer(function() if not self._destroyed then self:RefreshSource() end end) end)) end end
+	task.defer(function() if not self._destroyed then self:RefreshSource(true) end end)
+end
+function Dropdown:_sourceValues()
+	local source=self.Source
+	if type(source)=="function" then local ok,result=pcall(source); if ok then return result else warn(`[BobloUI] Dropdown source failed: {result}`); return {} end end
+	if type(source)=="table" then local getter=source.Get or source.Fetch; if type(getter)=="function" then local ok,result=pcall(getter,source); if not ok then ok,result=pcall(getter) end; if ok then return result else warn(`[BobloUI] Dropdown source failed: {result}`) end end end
+	return {}
+end
+function Dropdown:RefreshSource(silent)
+	if self.Source==nil then return self end
+	local values=self:_sourceValues(); if type(values)~="table" then values={} end
+	self:SetOptions(values,silent==true); return self
+end
 function Dropdown:_mountValue(host)
 	if self.Style=="Segmented" then return self:_mountSegmented(host) end
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host})
-	Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button})
+	self._button=Create.New("TextButton",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._button})
 	self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.62,Parent=self._button}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._button,{BackgroundColor3="ControlInset"})
 	self._valueLabel=Create.New("TextLabel",{Size=UDim2.new(1,-32,1,0),Position=UDim2.fromOffset(10,0),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text="",Parent=self._button}); w:_bind(self._valueLabel,{TextColor3="Text"})
 	self._arrow=Icon.new(w,"chevron_down",{Size=UDim2.fromOffset(15,15),Position=UDim2.new(1,-9,0.5,0),AnchorPoint=Vector2.new(1,0.5),Parent=self._button})
@@ -427,153 +496,107 @@ function Dropdown:_mountValue(host)
 	self._janitor:Add(self._button.MouseLeave:Connect(function() if not self._popup then self._button.BackgroundColor3=w.Theme:Get("ControlInset") end end))
 	self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then if self._popup then self:Close() else self:Open() end end end))
 end
-
 function Dropdown:_mountSegmented(host)
 	local w=self._window; local t=w.Tokens
 	self._segmentHost=Create.New("Frame",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._segmentHost}); local stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.62,Parent=self._segmentHost}); w:_bind(stroke,{Color="BorderSubtle"}); w:_bind(self._segmentHost,{BackgroundColor3="ControlInset"}); Create.List(2,Enum.FillDirection.Horizontal).Parent=self._segmentHost
 	self._segments={}; for _,o in self._options do
-		local b=Create.New("TextButton",{Size=UDim2.new(1/math.max(1,#self._options),-2,1,-4),BackgroundTransparency=1,BorderSizePixel=0,AutoButtonColor=false,Text=o.Label,Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),Parent=self._segmentHost}); Create.New("UICorner",{CornerRadius=UDim.new(0,math.max(4,t:Get("FieldRadius")-2)),Parent=b}); w:_bind(b,{BackgroundColor3="AccentSoft",TextColor3="TextSecondary"}); self._segments[o.Value]=b; self._janitor:Add(b.MouseButton1Click:Connect(function() if not self:IsDisabled() then self:SetValue(o.Value) end end))
+		local b=Create.New("TextButton",{Size=UDim2.new(1/math.max(1,#self._options),-2,1,-4),BackgroundTransparency=1,BorderSizePixel=0,AutoButtonColor=false,Text=o.Label,Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),Parent=self._segmentHost}); Create.New("UICorner",{CornerRadius=UDim.new(0,math.max(4,t:Get("FieldRadius")-2)),Parent=b}); w:_bind(b,{BackgroundColor3="AccentSoft",TextColor3="TextSecondary"}); self._segments[o.Value]=b; self._janitor:Add(b.MouseButton1Click:Connect(function() if not self:IsDisabled() and not o.Locked then self:SetValue(o.Value); if o.Callback then pcall(o.Callback,o.Value) end end end))
 	end
 end
-function Dropdown:_renderSegments(v)
-	if not self._segments then return end; local w=self._window; for value,b in self._segments do local on=value==v; b.BackgroundTransparency=if on then 0 else 1; b.TextColor3=w.Theme:Get(if on then "Text" else "TextSecondary") end
-end
-function Dropdown:_labelFor(value) for _,o in self._options do if o.Value==value then return o.Label end end; return tostring(value) end
+function Dropdown:_renderSegments(v) if not self._segments then return end; local w=self._window; for value,b in self._segments do local on=value==v; b.BackgroundTransparency=if on then 0 else 1; b.TextColor3=w.Theme:Get(if on then "Text" else "TextSecondary") end end
+function Dropdown:_labelFor(value) local o=findOption(self._options,value); return o and o.Label or tostring(value) end
 function Dropdown:_display(value)
-	if self.Multi then
-		if type(value)~="table" or #value==0 then return self.Placeholder end
-		local labels={}; for _,v in value do table.insert(labels,self:_labelFor(v)) end
-		if #labels>3 then return `{#labels} selected` end
-		return table.concat(labels,", ")
-	end
-	if value==nil then return self.Placeholder end
-	return self:_labelFor(value)
+	if self.Multi then if type(value)~="table" or #value==0 then return self.Placeholder end; local labels={}; for _,v in value do table.insert(labels,self:_labelFor(v)) end; if #labels>3 then return `{#labels} selected` end; return table.concat(labels,", ") end
+	if value==nil then return self.Placeholder end; return self:_labelFor(value)
 end
-function Dropdown:_render(v)
-	if self.Style=="Segmented" then self:_renderSegments(v); return end
-	if self._valueLabel then
-		local empty=v==nil or (type(v)=="table" and #v==0)
-		self._valueLabel.Text=self:_display(v); self._valueLabel.TextColor3=self._window.Theme:Get(empty and "TextTertiary" or "Text")
-	end
+function Dropdown:_render(v) if self.Style=="Segmented" then self:_renderSegments(v); return end; if self._valueLabel then local empty=v==nil or (type(v)=="table" and #v==0); self._valueLabel.Text=self:_display(v); self._valueLabel.TextColor3=self._window.Theme:Get(empty and "TextTertiary" or "Text") end end
+function Dropdown:_select(option)
+	local o=type(option)=="table" and option or findOption(self._options,option); if not o then return end
+	if o.Locked then if self._window.Notify then self._window.Notify:Push({Title=o.Label,Content=o.LockedReason or "This option is locked",Variant="Warning",Duration=3}) end; return end
+	local value=o.Value; if self._window.Sound then self._window.Sound:Play("Select") end
+	if self.Multi then local current=table.clone(self:GetValue() or {}); local p=table.find(current,value); local enabled
+		if p then table.remove(current,p); enabled=false else if self.Max and #current>=self.Max then return end; table.insert(current,value); enabled=true end
+		self:SetValue(current); if o.Callback then pcall(o.Callback,value,enabled) end; self:_rebuildPopup()
+	else self:SetValue(value); if o.Callback then pcall(o.Callback,value,true) end; self:Close() end
 end
-function Dropdown:_select(value)
-	if self._window.Sound then self._window.Sound:Play("Select") end
-	if self.Multi then
-		local current=table.clone(self:GetValue() or {}); local p=table.find(current,value)
-		if p then table.remove(current,p) else if self.Max and #current>=self.Max then return end; table.insert(current,value) end
-		self:SetValue(current); self:_rebuildPopup()
-	else self:SetValue(value); self:Close() end
+function Dropdown:_matches(o,query) if query=="" then return true end; local hay=string.lower(o.Label.." "..tostring(o.Description or "")); return string.find(hay,query,1,true)~=nil end
+function Dropdown:_filteredOptions()
+	local query=(self._search and string.lower(self._search.Text)) or ""; local out={}; for _,o in self._options do if self:_matches(o,query) then table.insert(out,o) end end; return out
 end
-
-function Dropdown:_filteredCount()
-	local query=(self._search and string.lower(self._search.Text)) or ""; local n=0
-	for _,o in self._options do if query=="" or string.find(string.lower(o.Label),query,1,true) then n+=1 end end
-	return n
+function Dropdown:_popupMetrics(filtered)
+	filtered=filtered or self:_filteredOptions(); local drawer=self._window.Device.Layout=="Drawer"; local top=if drawer then 20 else 8; local searchBlock=if self.Searchable then 42 else 0; local listTop=top+searchBlock; local listHeight=0
+	for i=1,math.max(1,math.min(MAX_VISIBLE_ROWS,#filtered)) do listHeight+=rowHeight(filtered[i])+((i>1) and ROW_GAP or 0) end
+	local height=listTop+listHeight+8; local triggerWidth=self._button and self._button.AbsoluteSize.X or 180; local minWidth=if self.Searchable then 240 else 176; local rich=false; for _,o in filtered do if o.Description or o.Icon then rich=true break end end; local width=math.min(math.max(triggerWidth,minWidth,rich and 280 or 0),360); return Vector2.new(width,height),listTop
 end
-function Dropdown:_popupMetrics(count)
-	local drawer=self._window.Device.Layout=="Drawer"
-	local top=if drawer then 20 else 8
-	local searchBlock=if self.Searchable then 42 else 0
-	local listTop=top+searchBlock
-	local rows=math.max(1,math.min(MAX_VISIBLE_ROWS,count))
-	local listHeight=rows*ROW_HEIGHT+math.max(0,rows-1)*ROW_GAP
-	local height=listTop+listHeight+8
-	local triggerWidth=self._button and self._button.AbsoluteSize.X or 180
-	local minWidth=if self.Searchable then 220 else 176
-	local width=math.min(math.max(triggerWidth,minWidth),320)
-	return Vector2.new(width,height),listTop
-end
-function Dropdown:_resizePopup(count)
-	if not self._popup then return end
-	local size=self:_popupMetrics(count)
-	if self._window.Device.Layout=="Drawer" then if self._popup.SetHeight then self._popup:SetHeight(math.min(440,size.Y)) end
-	elseif self._popup.SetSize then self._popup:SetSize(size) end
-end
-
+function Dropdown:_resizePopup(filtered) if not self._popup then return end; local size=self:_popupMetrics(filtered); if self._window.Device.Layout=="Drawer" then if self._popup.SetHeight then self._popup:SetHeight(math.min(440,size.Y)) end elseif self._popup.SetSize then self._popup:SetSize(size) end end
 function Dropdown:_buildPopup(frame)
-	local w=self._window; local t=w.Tokens; frame.ClipsDescendants=true
-	local size,listTop=self:_popupMetrics(#self._options)
-	local top=if w.Device.Layout=="Drawer" then 20 else 8
-	if self.Searchable then
-		local field=Create.New("Frame",{Size=UDim2.new(1,-16,0,34),Position=UDim2.fromOffset(8,top),BackgroundTransparency=0,BorderSizePixel=0,Parent=frame})
-		Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=field}); local s=Create.New("UIStroke",{Thickness=1,Transparency=0.46,Parent=field}); w:_bind(s,{Color="BorderSubtle"}); w:_bind(field,{BackgroundColor3="ControlInset"})
-		local icon=Icon.new(w,"search",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(10,10),Parent=field}); Icon.setColor(icon,w.Theme:Get("TextTertiary"))
-		self._search=Create.New("TextBox",{Size=UDim2.new(1,-34,1,0),Position=UDim2.fromOffset(30,0),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,PlaceholderText="Search...",Text="",Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Parent=field})
-		w:_bind(self._search,{TextColor3="Text",PlaceholderColor3="TextTertiary"})
-		self._popupSearchConn=self._search:GetPropertyChangedSignal("Text"):Connect(function() self:_rebuildPopup() end)
-	end
-	self._list=Scroller.new(w,{Size=UDim2.new(1,-12,1,-listTop-6),Position=UDim2.fromOffset(6,listTop),Parent=frame})
-	Create.New("UIPadding",{PaddingTop=UDim.new(0,0),PaddingBottom=UDim.new(0,0),PaddingLeft=UDim.new(0,2),PaddingRight=UDim.new(0,2),Parent=self._list})
-	Create.List(ROW_GAP).Parent=self._list
-	self:_rebuildPopup()
+	local w=self._window; local t=w.Tokens; frame.ClipsDescendants=true; local filtered=self:_filteredOptions(); local size,listTop=self:_popupMetrics(filtered); local top=if w.Device.Layout=="Drawer" then 20 else 8
+	if self.Searchable then local field=Create.New("Frame",{Size=UDim2.new(1,-16,0,34),Position=UDim2.fromOffset(8,top),BackgroundTransparency=0,BorderSizePixel=0,Parent=frame}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=field}); local s=Create.New("UIStroke",{Thickness=1,Transparency=0.46,Parent=field}); w:_bind(s,{Color="BorderSubtle"}); w:_bind(field,{BackgroundColor3="ControlInset"}); local icon=Icon.new(w,"search",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(10,10),Parent=field}); Icon.setColor(icon,w.Theme:Get("TextTertiary")); self._search=Create.New("TextBox",{Size=UDim2.new(1,-34,1,0),Position=UDim2.fromOffset(30,0),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,PlaceholderText="Search...",Text="",Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Parent=field}); w:_bind(self._search,{TextColor3="Text",PlaceholderColor3="TextTertiary"}); self._popupSearchConn=self._search:GetPropertyChangedSignal("Text"):Connect(function() self:_rebuildPopup() end) end
+	self._list=Scroller.new(w,{Size=UDim2.new(1,-12,1,-listTop-6),Position=UDim2.fromOffset(6,listTop),Parent=frame}); Create.New("UIPadding",{PaddingLeft=UDim.new(0,2),PaddingRight=UDim.new(0,2),Parent=self._list}); Create.List(ROW_GAP).Parent=self._list; self:_rebuildPopup()
 end
-
 function Dropdown:_rebuildPopup()
-	if not self._list then return end
-	for _,child in self._list:GetChildren() do if child:IsA("GuiObject") then child:Destroy() end end
-	local query=(self._search and string.lower(self._search.Text)) or ""; local selected=self:GetValue(); local w=self._window; local visible=0
-	for _,o in self._options do
-		if query=="" or string.find(string.lower(o.Label),query,1,true) then
-			visible+=1
-			local isSelected=if self.Multi then contains(selected or {},o.Value) else selected==o.Value
-			local b=Create.New("TextButton",{Size=UDim2.new(1,0,0,ROW_HEIGHT),BackgroundTransparency=if isSelected then 0 else 1,BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=self._list})
-			Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=b}); w:_bind(b,{BackgroundColor3="AccentSoft"})
-			local mark=Create.New("Frame",{Size=UDim2.fromOffset(20,ROW_HEIGHT),Position=UDim2.fromOffset(2,0),BackgroundTransparency=1,Parent=b})
-			if isSelected then local check=Icon.new(w,"check",{Size=UDim2.fromOffset(12,12),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=mark}); Icon.setColor(check,w.Theme:Get("Accent")) end
-			local label=Create.New("TextLabel",{Size=UDim2.new(1,-28,1,0),Position=UDim2.fromOffset(24,0),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Text=o.Label,Parent=b}); w:_bind(label,{TextColor3=if isSelected then "Text" else "TextSecondary"})
-			b.MouseEnter:Connect(function() if not isSelected then b.BackgroundTransparency=0; b.BackgroundColor3=w.Theme:Get("ControlHover") end end)
-			b.MouseLeave:Connect(function() b.BackgroundTransparency=if isSelected then 0 else 1 end)
-			b.MouseButton1Click:Connect(function() self:_select(o.Value) end)
-		end
+	if not self._list then return end; for _,child in self._list:GetChildren() do if child:IsA("GuiObject") then child:Destroy() end end
+	local filtered=self:_filteredOptions(); local selected=self:GetValue(); local w=self._window
+	for _,o in filtered do
+		local isSelected=if self.Multi then contains(selected or {},o.Value) else selected==o.Value; local h=rowHeight(o)
+		local b=Create.New("TextButton",{Size=UDim2.new(1,0,0,h),BackgroundTransparency=if isSelected then 0 else 1,BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=self._list}); Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=b}); w:_bind(b,{BackgroundColor3="AccentSoft"})
+		local left=8
+		if o.Icon then local ic=Icon.new(w,o.Icon,{Size=UDim2.fromOffset(15,15),Position=UDim2.fromOffset(9,math.floor(h/2)),AnchorPoint=Vector2.new(0,0.5),Parent=b}); Icon.setColor(ic,w.Theme:Get(o.Locked and "TextDisabled" or (isSelected and "Accent" or "TextSecondary"))); left=32 end
+		local right=if isSelected or o.Locked then 24 else 8
+		local label=Create.New("TextLabel",{Size=UDim2.new(1,-left-right,0,if o.Description then 20 else h),Position=UDim2.fromOffset(left,if o.Description then 5 else 0),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=o.Label,Parent=b}); w:_bind(label,{TextColor3=if o.Locked then "TextDisabled" elseif isSelected then "Text" else "TextSecondary"})
+		if o.Description then local desc=Create.New("TextLabel",{Size=UDim2.new(1,-left-right,0,17),Position=UDim2.fromOffset(left,24),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Text=tostring(o.Description),Parent=b}); w:_bind(desc,{TextColor3=o.Locked and "TextDisabled" or "TextTertiary"}) end
+		if isSelected then local check=Icon.new(w,"check",{Size=UDim2.fromOffset(12,12),Position=UDim2.new(1,-8,0.5,0),AnchorPoint=Vector2.new(1,0.5),Parent=b}); Icon.setColor(check,w.Theme:Get("Accent")) elseif o.Locked then local lock=Icon.new(w,"lock",{Size=UDim2.fromOffset(13,13),Position=UDim2.new(1,-8,0.5,0),AnchorPoint=Vector2.new(1,0.5),Parent=b}); Icon.setColor(lock,w.Theme:Get("TextDisabled")) end
+		b.MouseEnter:Connect(function() if not isSelected then b.BackgroundTransparency=0; b.BackgroundColor3=w.Theme:Get("ControlHover") end end); b.MouseLeave:Connect(function() b.BackgroundTransparency=if isSelected then 0 else 1 end); b.MouseButton1Click:Connect(function() self:_select(o) end)
 	end
-	if visible==0 then
-		local empty=Create.New("TextLabel",{Size=UDim2.new(1,0,0,ROW_HEIGHT),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontSmall"),Text="No matches",Parent=self._list}); w:_bind(empty,{TextColor3="TextTertiary"})
-	end
-	self:_resizePopup(visible)
+	if #filtered==0 then local empty=Create.New("TextLabel",{Size=UDim2.new(1,0,0,ROW_HEIGHT),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontSmall"),Text="No matches",Parent=self._list}); w:_bind(empty,{TextColor3="TextTertiary"}) end
+	self:_resizePopup(filtered)
 end
-
-function Dropdown:_clearPopupRefs()
-	if self._popupSearchConn then self._popupSearchConn:Disconnect(); self._popupSearchConn=nil end
-	self._search=nil; self._list=nil
-end
+function Dropdown:_clearPopupRefs() if self._popupSearchConn then self._popupSearchConn:Disconnect(); self._popupSearchConn=nil end; self._search=nil; self._list=nil end
 function Dropdown:Open()
-	if self._window.Sound then self._window.Sound:Play("Open") end
-	if self.Style=="Segmented" then return self end
-	if self._popup then return self end
-	local size=self:_popupMetrics(#self._options); local handle
-	local function dismissed()
-		self._popup=nil; self:_clearPopupRefs()
-		if self._arrow then self._arrow.Rotation=0 end
-		if self._button then self._button.BackgroundColor3=self._window.Theme:Get("ControlInset") end
-		if self._stroke then self._stroke.Color=self._window.Theme:Get("BorderSubtle") end
-	end
-	if self._window.Device.Layout=="Drawer" then handle=Sheet.open(self._window,math.min(440,size.Y),{OnDismiss=dismissed})
-	else handle=Popover.open(self._window,self._button,size,{OnDismiss=dismissed,Corner=8}) end
-	self._popup=handle; self:_buildPopup(handle.Frame)
-	self._arrow.Rotation=180; self._button.BackgroundColor3=self._window.Theme:Get("ControlHover"); self._stroke.Color=self._window.Theme:Get("AccentBorder")
-	return self
+	if self._window.Sound then self._window.Sound:Play("Open") end; if self.Style=="Segmented" then return self end; if self._popup then return self end
+	local filtered=self:_filteredOptions(); local size=self:_popupMetrics(filtered); local handle; local function dismissed() self._popup=nil; self:_clearPopupRefs(); if self._arrow then self._arrow.Rotation=0 end; if self._button then self._button.BackgroundColor3=self._window.Theme:Get("ControlInset") end; if self._stroke then self._stroke.Color=self._window.Theme:Get("BorderSubtle") end end
+	if self._window.Device.Layout=="Drawer" then handle=Sheet.open(self._window,math.min(440,size.Y),{OnDismiss=dismissed}) else handle=Popover.open(self._window,self._button,size,{OnDismiss=dismissed,Corner=8}) end
+	self._popup=handle; self:_buildPopup(handle.Frame); self._arrow.Rotation=180; self._button.BackgroundColor3=self._window.Theme:Get("ControlHover"); self._stroke.Color=self._window.Theme:Get("AccentBorder"); return self
 end
-function Dropdown:Close()
-	if self._popup then local h=self._popup; self._popup=nil; self:_clearPopupRefs(); h:Dismiss() end
-	if self._arrow then self._arrow.Rotation=0 end
-	return self
-end
-function Dropdown:SetOptions(list)
+function Dropdown:Close() if self._popup then local h=self._popup; self._popup=nil; self:_clearPopupRefs(); h:Dismiss() end; if self._arrow then self._arrow.Rotation=0 end; return self end
+function Dropdown:SetOptions(list,silent)
 	self._options=normalize(list or {}); local current=self:GetValue()
-	if self.Multi then
-		local kept={}; for _,v in current or {} do for _,o in self._options do if o.Value==v then table.insert(kept,v); break end end end; self:SetValue(kept,true)
-	else
-		local exists=false; for _,o in self._options do if o.Value==current then exists=true break end end
-		if not exists then self:SetValue(if self.AllowNone then nil else (self._options[1] and self._options[1].Value or nil),true) end
-	end
+	if self.Multi then local kept={}; for _,v in current or {} do if findOption(self._options,v) then table.insert(kept,v) end end; self:SetValue(kept,true)
+	else local exists=findOption(self._options,current)~=nil; if not exists and current~=nil then self:SetValue(if self.AllowNone then nil else (self._options[1] and self._options[1].Value or nil),true) end end
 	if self.Style=="Segmented" and self._segmentHost then local host=self._valueHost; self._segmentHost:Destroy(); self._segmentHost=nil; self._segments=nil; self:_mountSegmented(host) else self:_rebuildPopup() end; self:_render(self:GetValue()); return self
 end
-function Dropdown:Refresh(list) if list~=nil then return self:SetOptions(list) end; self:_rebuildPopup(); return self end
+function Dropdown:Refresh(list) if list~=nil then return self:SetOptions(list) end; if self.Source then self:RefreshSource() else self:_rebuildPopup() end; return self end
 function Dropdown:AddOption(o) local n=normalize({o})[1]; if n then table.insert(self._options,n) end; self:_rebuildPopup(); return self end
 function Dropdown:RemoveOption(value) for i=#self._options,1,-1 do if self._options[i].Value==value then table.remove(self._options,i) end end; return self:SetOptions(self._options) end
 function Dropdown:Destroy() self:Close(); Base.Destroy(self) end
 function Dropdown:_applyValueTokens() if self._button then self._button.Size=UDim2.new(1,0,0,self._window.Tokens:Get("FieldHeight")); self._valueLabel.TextSize=self._window.Tokens:Get("FontBody") end; if self._segmentHost then self._segmentHost.Size=UDim2.new(1,0,0,self._window.Tokens:Get("FieldHeight")); for _,b in self._segments or {} do b.TextSize=self._window.Tokens:Get("FontSmall") end end end
 return Dropdown
+
+end
+
+__modules["controls/Image"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Base=__require("controls/Base")
+local Image=setmetatable({}, {__index=Base}); Image.__index=Image
+function Image.new(section,options)
+	options=options or {}; local self=setmetatable({},Image)
+	self.Image=options.Image or ""
+	self.Height=math.max(64,tonumber(options.Height) or 160)
+	self.ScaleType=options.ScaleType or Enum.ScaleType.Fit
+	self.Caption=options.Caption
+	Base.init(self,section,"Image",options,{Stateful=false,Default=nil,Layout="Stacked"}); return Base.finish(self)
+end
+function Image:_measure() local t=self._window.Tokens; return t:Get("ControlHeight")+self.Height+(self.Caption and 28 or 10)+(self.Description and 12 or 0) end
+function Image:_mountValue(host)
+	local w=self._window; local t=w.Tokens
+	self._image=Create.New("ImageLabel",{Size=UDim2.new(1,0,0,self.Height),BackgroundTransparency=0,BorderSizePixel=0,Image=self.Image,ScaleType=self.ScaleType,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._image}); local s=Create.New("UIStroke",{Thickness=1,Transparency=0.58,Parent=self._image}); w:_bind(s,{Color="BorderSubtle"}); w:_bind(self._image,{BackgroundColor3="ControlInset"})
+	if self.Caption then self._caption=Create.New("TextLabel",{Size=UDim2.new(1,0,0,20),Position=UDim2.fromOffset(0,self.Height+6),BackgroundTransparency=1,Text=tostring(self.Caption),Font=w.Fonts.Regular,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,Parent=host}); w:_bind(self._caption,{TextColor3="TextTertiary"}) end
+end
+function Image:_applyValueTokens() if self._valueHost then self._valueHost.Size=UDim2.new(1,-self._window.Tokens:Get("ControlPadding")*2,0,self.Height+(self.Caption and 26 or 0)) end; if self._image then self._image.Size=UDim2.new(1,0,0,self.Height) end end
+function Image:SetImage(value) self.Image=value or ""; if self._image then self._image.Image=self.Image end; return self end
+function Image:SetCaption(value) self.Caption=value; if self._caption then self._caption.Text=tostring(value or "") end; return self end
+return Image
 
 end
 
@@ -672,14 +695,81 @@ return Paragraph
 
 end
 
+__modules["controls/Progress"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Base=__require("controls/Base")
+local Progress=setmetatable({}, {__index=Base}); Progress.__index=Progress
+
+function Progress.new(section,options)
+	options=options or {}
+	local self=setmetatable({},Progress)
+	self.Min=tonumber(options.Min) or 0
+	self.Max=tonumber(options.Max) or 100
+	if self.Max<=self.Min then self.Max=self.Min+1 end
+	self.Suffix=options.Suffix or "%"
+	self.Format=options.Format
+	self.ShowValue=options.ShowValue~=false
+	self.Indeterminate=options.Indeterminate==true
+	local d=tonumber(options.Default)
+	if d==nil then d=self.Min end
+	d=math.clamp(d,self.Min,self.Max)
+	Base.init(self,section,"Progress",options,{Stateful=true,Default=d,Layout="Stacked"})
+	return Base.finish(self)
+end
+function Progress:_format(v)
+	if self.Format then return self.Format(v) end
+	return tostring(math.floor(v*100+0.5)/100)..self.Suffix
+end
+function Progress:SetValue(v,silent)
+	v=math.clamp(tonumber(v) or self.Min,self.Min,self.Max)
+	return Base.SetValue(self,v,silent)
+end
+function Progress:_mountValue(host)
+	local w=self._window; local t=w.Tokens
+	self._valueLabel=Create.New("TextLabel",{Size=UDim2.fromOffset(84,18),Position=UDim2.new(1,0,0,-t:Get("ControlHeight")+2),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=1,Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Visible=self.ShowValue,Parent=host}); w:_bind(self._valueLabel,{TextColor3="TextSecondary"})
+	self._track=Create.New("Frame",{Size=UDim2.new(1,-4,0,6),Position=UDim2.new(0,2,0.5,5),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,ClipsDescendants=true,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._track}); w:_bind(self._track,{BackgroundColor3="SurfaceInset"})
+	self._fill=Create.New("Frame",{Size=UDim2.fromScale(0,1),BorderSizePixel=0,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._fill}); w:_bind(self._fill,{BackgroundColor3="Accent"})
+	self:_render(self:GetValue())
+	if self.Indeterminate then self:_startIndeterminate() end
+end
+function Progress:_startIndeterminate()
+	if self._indeterminateTask then return end
+	self._indeterminateTask=task.spawn(function()
+		while not self._destroyed and self.Indeterminate do
+			if self._fill then
+				self._fill.Size=UDim2.fromScale(0.28,1); self._fill.Position=UDim2.fromScale(-0.28,0)
+				local tween=self._window.Motion:Tween(self._fill,TweenInfo.new(0.8,Enum.EasingStyle.Quad,Enum.EasingDirection.InOut),{Position=UDim2.fromScale(1,0)})
+				if tween then tween.Completed:Wait() else task.wait(0.8) end
+			else task.wait(0.1) end
+		end
+		self._indeterminateTask=nil
+	end)
+	self._janitor:Add(self._indeterminateTask,nil,"indeterminate")
+end
+function Progress:SetIndeterminate(v)
+	self.Indeterminate=v==true
+	if self.Indeterminate then self:_startIndeterminate() else self._janitor:Remove("indeterminate"); self._indeterminateTask=nil; self:_render(self:GetValue()) end
+	return self
+end
+function Progress:_render(v)
+	if self._valueLabel then self._valueLabel.Text=self:_format(v) end
+	if self._fill and not self.Indeterminate then local a=math.clamp((v-self.Min)/(self.Max-self.Min),0,1); self._fill.Position=UDim2.new(); self._fill.Size=UDim2.fromScale(a,1) end
+end
+function Progress:_applyValueTokens() if self._valueLabel then self._valueLabel.TextSize=self._window.Tokens:Get("FontSmall") end end
+return Progress
+
+end
+
 __modules["controls/Slider"] = function()
 --!nonstrict
 local Create=__require("runtime/Create")
 local Base=__require("controls/Base")
+local Icon=__require("primitives/Icon")
 local Slider=setmetatable({}, {__index=Base}); Slider.__index=Slider
 function Slider.new(section,options)
 	if type(options.Min)~="number" or type(options.Max)~="number" then error("[BobloUI] AddSlider requires Min and Max numbers.",3) end
-	local self=setmetatable({},Slider); self.Min=options.Min; self.Max=options.Max; self.Step=options.Step or 1; self.Precision=options.Precision; self.Suffix=options.Suffix or ""; self.Format=options.Format
+	local self=setmetatable({},Slider); self.Min=options.Min; self.Max=options.Max; self.Step=options.Step or 1; self.Precision=options.Precision; self.Suffix=options.Suffix or ""; self.Format=options.Format; self.ValueInput=options.ValueInput~=false; self.FloatingValue=options.FloatingValue==true; self.IconFrom=options.IconFrom; self.IconTo=options.IconTo
 	local d=options.Default; if d==nil then d=self.Min end; d=math.clamp(d,self.Min,self.Max); Base.init(self,section,"Slider",options,{Stateful=true,Default=d,Layout="Stacked"}); return Base.finish(self)
 end
 function Slider:_format(v) if self.Format then return self.Format(v) end; if self.Precision then return string.format("%."..self.Precision.."f",v)..self.Suffix end; return tostring(v)..self.Suffix end
@@ -687,19 +777,24 @@ function Slider:_normalize(v) v=tonumber(v) or self.Min; v=math.clamp(v,self.Min
 function Slider:SetValue(v,silent) return Base.SetValue(self,self:_normalize(v),silent) end
 function Slider:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._valueBox=Create.New("TextBox",{Size=UDim2.fromOffset(72,24),Position=UDim2.new(1,0,0,-t:Get("ControlHeight")+(self.Description and -5 or 2)),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,Text=self:_format(self:GetValue()),Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Parent=host}); w:_bind(self._valueBox,{TextColor3="TextSecondary"})
-	self._track=Create.New("Frame",{Size=UDim2.new(1,-4,0,t:Get("SliderTrack")),Position=UDim2.new(0,2,0.5,5),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._track}); w:_bind(self._track,{BackgroundColor3="SurfaceInset"})
+	self._valueBox=Create.New("TextBox",{Size=UDim2.fromOffset(72,24),Position=UDim2.new(1,0,0,-t:Get("ControlHeight")+(self.Description and -5 or 2)),AnchorPoint=Vector2.new(1,0),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,Text=self:_format(self:GetValue()),TextEditable=self.ValueInput,Font=w.Fonts.Medium,TextSize=t:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Parent=host}); w:_bind(self._valueBox,{TextColor3="TextSecondary"})
+	local leftInset=if self.IconFrom then 20 else 2; local rightInset=if self.IconTo then 20 else 2
+	if self.IconFrom then self._fromIcon=Icon.new(w,self.IconFrom,{Size=UDim2.fromOffset(14,14),Position=UDim2.new(0,0,0.5,5),AnchorPoint=Vector2.new(0,0.5),Parent=host}); Icon.setColor(self._fromIcon,w.Theme:Get("TextTertiary")) end
+	if self.IconTo then self._toIcon=Icon.new(w,self.IconTo,{Size=UDim2.fromOffset(14,14),Position=UDim2.new(1,0,0.5,5),AnchorPoint=Vector2.new(1,0.5),Parent=host}); Icon.setColor(self._toIcon,w.Theme:Get("TextTertiary")) end
+	self._track=Create.New("Frame",{Size=UDim2.new(1,-leftInset-rightInset,0,t:Get("SliderTrack")),Position=UDim2.new(0,leftInset,0.5,5),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._track}); w:_bind(self._track,{BackgroundColor3="SurfaceInset"})
 	self._fill=Create.New("Frame",{Size=UDim2.fromScale(0,1),BorderSizePixel=0,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._fill}); w:_bind(self._fill,{BackgroundColor3="Accent"})
 	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(t:Get("SliderKnob"),t:Get("SliderKnob")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,ZIndex=3,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); Create.New("UIStroke",{Thickness=1,Color=Color3.new(1,1,1),Transparency=0.42,Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="Accent"})
+	if self.FloatingValue then self._bubble=Create.New("TextLabel",{Size=UDim2.fromOffset(64,24),Position=UDim2.new(0,0,0.5,-18),AnchorPoint=Vector2.new(0.5,1),BackgroundTransparency=0,BorderSizePixel=0,Visible=false,Font=w.Fonts.Medium,TextSize=t:Get("FontCaption"),ZIndex=6,Parent=self._track}); Create.New("UICorner",{CornerRadius=UDim.new(0,6),Parent=self._bubble}); w:_bind(self._bubble,{BackgroundColor3="SurfaceRaised",TextColor3="Text"}) end
 	local hit=Create.New("TextButton",{Size=UDim2.new(1,0,0,30),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,Text="",ZIndex=4,Parent=self._track})
 	self._janitor:Add(hit.InputBegan:Connect(function(i)
 		if self:IsDisabled() then return end; if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end
 		local page=self._section._tab._page; local oldScroll=page and page.ScrollingEnabled; if i.UserInputType==Enum.UserInputType.Touch and page then page.ScrollingEnabled=false end
-		local function at(pos) local a=(pos.X-self._track.AbsolutePosition.X)/math.max(1,self._track.AbsoluteSize.X); self:SetValue(self.Min+math.clamp(a,0,1)*(self.Max-self.Min)) end; at(i.Position); w.Input:CapturePointer(self,i,function(m) at(m.Position) end,function() if page and oldScroll~=nil then page.ScrollingEnabled=oldScroll end end)
-	end)); self._janitor:Add(self._valueBox.FocusLost:Connect(function() self:SetValue(self._valueBox.Text) end))
+		if self._bubble then self._bubble.Visible=true end
+		local function at(pos) local a=(pos.X-self._track.AbsolutePosition.X)/math.max(1,self._track.AbsoluteSize.X); self:SetValue(self.Min+math.clamp(a,0,1)*(self.Max-self.Min)) end; at(i.Position); w.Input:CapturePointer(self,i,function(m) at(m.Position) end,function() if page and oldScroll~=nil then page.ScrollingEnabled=oldScroll end; if self._bubble then self._bubble.Visible=false end end)
+	end)); if self.ValueInput then self._janitor:Add(self._valueBox.FocusLost:Connect(function() self:SetValue(self._valueBox.Text) end)) end
 end
 function Slider:_render(v)
-	if not self._fill then return end; local a=math.clamp((v-self.Min)/math.max(0.000001,self.Max-self.Min),0,1); self._fill.Size=UDim2.fromScale(a,1); self._knob.Position=UDim2.fromScale(a,0.5); if not self._valueBox:IsFocused() then self._valueBox.Text=self:_format(v) end
+	if not self._fill then return end; local a=math.clamp((v-self.Min)/math.max(0.000001,self.Max-self.Min),0,1); self._fill.Size=UDim2.fromScale(a,1); self._knob.Position=UDim2.fromScale(a,0.5); if self._bubble then self._bubble.Position=UDim2.new(a,0,0.5,-18); self._bubble.Text=self:_format(v) end; if not self._valueBox:IsFocused() then self._valueBox.Text=self:_format(v) end
 end
 function Slider:_applyValueTokens() if self._track then self._track.Size=UDim2.new(1,-4,0,self._window.Tokens:Get("SliderTrack")); local n=self._window.Tokens:Get("SliderKnob"); self._knob.Size=UDim2.fromOffset(n,n); self._valueBox.TextSize=self._window.Tokens:Get("FontSmall") end end
 function Slider:SetMin(v) self.Min=v; if self.Max<self.Min then self.Max=self.Min end; self:SetValue(self:GetValue(),true); return self end
@@ -751,12 +846,13 @@ local Create=__require("runtime/Create")
 local Base=__require("controls/Base")
 local TextField=setmetatable({}, {__index=Base}); TextField.__index=TextField
 function TextField.new(section,options)
-	local self=setmetatable({},TextField); self.Placeholder=options.Placeholder or ""; self.Numeric=options.Numeric==true; self.MaxLength=options.MaxLength; self.Multiline=options.Multiline==true; self.ClearOnFocus=options.ClearOnFocus==true; self.Validate=options.Validate; self.CommitOn=options.CommitOn or "FocusLost"; self._error=nil
-	Base.init(self,section,"Input",options,{Stateful=true,Default=options.Default or (self.Numeric and 0 or ""),Adaptive=true}); return Base.finish(self)
+	local self=setmetatable({},TextField); self.Placeholder=options.Placeholder or ""; self.Numeric=options.Numeric==true; self.MaxLength=options.MaxLength; self.Multiline=options.Multiline==true; self.Height=math.max(34,tonumber(options.Height) or (self.Multiline and 110 or 0)); self.ClearOnFocus=options.ClearOnFocus==true; self.Validate=options.Validate; self.CommitOn=options.CommitOn or "FocusLost"; self._error=nil
+	Base.init(self,section,"Input",options,{Stateful=true,Default=options.Default or (self.Numeric and 0 or ""),Adaptive=true,Layout=if self.Multiline then "Stacked" else nil}); return Base.finish(self)
 end
+function TextField:_measure() if self.Multiline then local t=self._window.Tokens; return t:Get("ControlHeight")+self.Height+10+(self.Description and 12 or 0) end; return Base._measure(self) end
 function TextField:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._box=Create.New("TextBox",{Size=UDim2.new(1,0,0,t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=self.ClearOnFocus,MultiLine=self.Multiline,PlaceholderText=self.Placeholder,Text=tostring(self:GetValue() or ""),Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._box}); Create.New("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._box}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.62,Parent=self._box}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._box,{BackgroundColor3="ControlInset",TextColor3="Text",PlaceholderColor3="TextTertiary"})
+	self._box=Create.New("TextBox",{Size=UDim2.new(1,0,0,if self.Multiline then self.Height else t:Get("FieldHeight")),Position=UDim2.new(0,0,0.5,0),AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=0,BorderSizePixel=0,ClearTextOnFocus=self.ClearOnFocus,MultiLine=self.Multiline,PlaceholderText=self.Placeholder,Text=tostring(self:GetValue() or ""),Font=w.Fonts.Regular,TextSize=t:Get("FontBody"),TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if self.Multiline then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._box}); Create.New("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._box}); self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.62,Parent=self._box}); w:_bind(self._stroke,{Color="BorderSubtle"}); w:_bind(self._box,{BackgroundColor3="ControlInset",TextColor3="Text",PlaceholderColor3="TextTertiary"})
 	if self.CommitOn=="Change" then self._janitor:Add(self._box:GetPropertyChangedSignal("Text"):Connect(function() self:_commit() end)) end
 	self._janitor:Add(self._box.Focused:Connect(function() self._stroke.Color=w.Theme:Get("AccentBorder"); self._stroke.Transparency=0; if w.Device.Layout=="Drawer" then task.defer(function() self:Reveal() end) end end))
 	self._janitor:Add(self._box.FocusLost:Connect(function(enter) self._stroke.Color=w.Theme:Get("BorderSubtle"); self._stroke.Transparency=0.62; if self.CommitOn=="FocusLost" or (self.CommitOn=="Enter" and enter) then self:_commit() end end))
@@ -774,7 +870,7 @@ function TextField:Blur() if self._box then self._box:ReleaseFocus() end; return
 function TextField:Clear() return self:SetValue(self.Numeric and 0 or "") end
 function TextField:SetError(text) self._error=text; self:_render(self:GetValue()); return self end
 function TextField:_applyDisabled() Base._applyDisabled(self); if self._box then self._box.TextEditable=not self._disabled end end
-function TextField:_applyValueTokens() if self._box then self._box.Size=UDim2.new(1,0,0,self._window.Tokens:Get("FieldHeight")); self._box.TextSize=self._window.Tokens:Get("FontBody") end end
+function TextField:_applyValueTokens() if self._valueHost and self.Multiline then self._valueHost.Size=UDim2.new(1,-self._window.Tokens:Get("ControlPadding")*2,0,self.Height) end; if self._box then self._box.Size=UDim2.new(1,0,0,if self.Multiline then self.Height else self._window.Tokens:Get("FieldHeight")); self._box.TextSize=self._window.Tokens:Get("FontBody") end end
 return TextField
 
 end
@@ -783,20 +879,26 @@ __modules["controls/Toggle"] = function()
 --!nonstrict
 local Create=__require("runtime/Create")
 local Base=__require("controls/Base")
+local Icon=__require("primitives/Icon")
 local Toggle=setmetatable({}, {__index=Base}); Toggle.__index=Toggle
-function Toggle.new(section,options) local self=setmetatable({},Toggle); Base.init(self,section,"Toggle",options,{Stateful=true,Default=options.Default==true}); return Base.finish(self) end
+function Toggle.new(section,options) local self=setmetatable({},Toggle); self.Style=options.Style or "Switch"; Base.init(self,section,"Toggle",options,{Stateful=true,Default=options.Default==true}); return Base.finish(self) end
 function Toggle:_mountValue(host)
 	local w=self._window; local t=w.Tokens
-	self._button=Create.New("TextButton",{Size=UDim2.fromOffset(34,18),Position=UDim2.new(1,0,0.5,0),AnchorPoint=Vector2.new(1,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._button})
+	local checkbox=self.Style=="Checkbox"
+	self._button=Create.New("TextButton",{Size=if checkbox then UDim2.fromOffset(20,20) else UDim2.fromOffset(34,18),Position=UDim2.new(1,0,0.5,0),AnchorPoint=Vector2.new(1,0.5),BorderSizePixel=0,AutoButtonColor=false,Text="",Parent=host}); Create.New("UICorner",{CornerRadius=if checkbox then UDim.new(0,5) else UDim.new(1,0),Parent=self._button})
 	self._stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.62,Parent=self._button}); w:_bind(self._stroke,{Color="BorderStrong"}); w:_bind(self._button,{BackgroundColor3="SurfaceInset"})
-	self._knob=Create.New("Frame",{Size=UDim2.fromOffset(12,12),Position=UDim2.new(0,3,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=self._button}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="TextTertiary"})
+	if checkbox then
+		self._check=Icon.new(w,"check",{Size=UDim2.fromOffset(12,12),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Visible=false,Parent=self._button}); Icon.setColor(self._check,w.Theme:Get("AccentText"))
+	else
+		self._knob=Create.New("Frame",{Size=UDim2.fromOffset(12,12),Position=UDim2.new(0,3,0.5,0),AnchorPoint=Vector2.new(0,0.5),BorderSizePixel=0,Parent=self._button}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._knob}); w:_bind(self._knob,{BackgroundColor3="TextTertiary"})
+	end
 	self._janitor:Add(self._button.MouseButton1Click:Connect(function() if not self:IsDisabled() then self:Flip() end end))
 end
 function Toggle:_render(value)
 	if not self._button then return end; local on=value==true; local w=self._window
 	self._button.BackgroundColor3=w.Theme:Get(if on then "Accent" else "SurfaceInset"); self._stroke.Color=w.Theme:Get(if on then "AccentBorder" else "BorderSubtle"); self._stroke.Transparency=if on then 0.45 else 0.62
-	self._knob.BackgroundColor3=w.Theme:Get(if on then "AccentText" else "TextSecondary")
-	w.Motion:Tween(self._knob,"Fast",{Position=if on then UDim2.new(1,-15,0.5,0) else UDim2.new(0,3,0.5,0)})
+	if self.Style=="Checkbox" then if self._check then self._check.Visible=on end
+	elseif self._knob then self._knob.BackgroundColor3=w.Theme:Get(if on then "AccentText" else "TextSecondary"); w.Motion:Tween(self._knob,"Fast",{Position=if on then UDim2.new(1,-15,0.5,0) else UDim2.new(0,3,0.5,0)}) end
 end
 function Toggle:Flip() if self._window.Sound then self._window.Sound:Play("Toggle") end; return self:SetValue(not self:GetValue()) end
 return Toggle
@@ -836,10 +938,23 @@ local Midnight=__require("themes/Midnight")
 local Settings=__require("services/Settings")
 local Sound=__require("services/Sound")
 local Navigation=__require("services/Navigation")
+local Loading=__require("services/Loading")
+local HUD=__require("services/HUD")
+local Cursor=__require("services/Cursor")
 local HttpService=game:GetService("HttpService")
+local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.10.4-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.0-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Sources={}
+function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
+function BobloUI.Sources.Players(options)
+	options=options or {}; return {
+		Get=function() local out={}; for _,player in Players:GetPlayers() do if options.IncludeLocalPlayer~=false or player~=Players.LocalPlayer then table.insert(out,{Value=if options.ReturnPlayer then player else player.Name,Title=options.UseUsername and player.Name or player.DisplayName,Description=if player.DisplayName~=player.Name then "@"..player.Name else nil,Icon=options.Icon}) end end; table.sort(out,function(a,b) return string.lower(a.Title)<string.lower(b.Title) end); return out end,
+		Signals={Players.PlayerAdded,Players.PlayerRemoving}
+	}
+end
+
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -849,7 +964,7 @@ local function evict(id)
 	local r=globalRegistry(); local previous=r.Instances[id]; if not previous then return end; r.Instances[id]=nil
 	local ok,err=pcall(function() previous:Unload() end); if not ok then warn(`[BobloUI] previous window "{id}" failed to unload ({err}); sweeping GUIs.`); Layer.SweepOrphans(id) end
 end
-local WINDOW_OPTIONS={"Id","Singleton","Title","Subtitle","Theme","Accent","Density","Scale","Size","MinSize","Locale","ToggleKey","ConfigFolder","AutoLoad","ReducedMotion","HighContrast","Settings","RememberGeometry","KeyboardNavigation","SoundEnabled","SoundVolume","Sounds","OnUnload"}
+local WINDOW_OPTIONS={"Id","Singleton","Title","Subtitle","Theme","Accent","Density","Scale","Size","MinSize","Locale","ToggleKey","ConfigFolder","AutoLoad","ReducedMotion","HighContrast","Settings","RememberGeometry","KeyboardNavigation","SoundEnabled","SoundVolume","Sounds","OnUnload","SidebarHidden","CornerRadius","FooterHeight","Opacity","BackgroundImage","BackgroundImageTransparency","RestoreButton","TabTransition","WindowAnimation","NotificationPosition","Watermark","KeybindHUD","CustomCursor"}
 local function checkOptions(options)
 	if type(options)~="table" then error("[BobloUI] CreateWindow expects an options table.",3) end
 	if type(options.Title)~="string" then error("[BobloUI] CreateWindow: Title is required and must be a string.",3) end
@@ -900,13 +1015,16 @@ function BobloUI:CreateWindow(options)
 	local favorites=Favorites.new(registry); janitor:Add(favorites); window.Favorites=favorites
 	local search=Search.new(window); window.Search=search
 	local commands=Commands.new(window); window.Commands=commands
-	local notify=Notify.new(window); janitor:Add(notify); window.Notify=notify
+	local notify=Notify.new(window,options.NotificationPosition); janitor:Add(notify); window.Notify=notify
 	local dialog=Dialog.new(window); janitor:Add(dialog); window.Dialog=dialog
 	local config=nil; if options.ConfigFolder then config=Config.new(window,options.ConfigFolder); janitor:Add(config); window.Config=config end
 	local interactions=Interactions.new(window); janitor:Add(interactions); window.Interactions=interactions
 	local palette=Palette.new(window,search,commands); janitor:Add(palette); window.Palette=palette
 	local sound=Sound.new(window,options); janitor:Add(sound); window.Sound=sound
 	local navigation=Navigation.new(window,options.KeyboardNavigation~=false); janitor:Add(navigation); window.Navigation=navigation
+	local loading=Loading.new(window); janitor:Add(loading); window.Loading=loading
+	local hud=HUD.new(window); janitor:Add(hud); window.HUD=hud
+	local cursor=Cursor.new(window); janitor:Add(cursor); window.Cursor=cursor
 	local settings=nil; if options.Settings~=false then settings=Settings.new(window,options); janitor:Add(settings); window.Settings=settings end
 	function window:OpenSettings() if settings then settings:Open() end; return self end
 
@@ -939,6 +1057,12 @@ function BobloUI:CreateWindow(options)
 	function window:SetSoundVolume(volume) sound:SetVolume(volume); return self end
 	function window:RegisterSound(name,spec) sound:Register(name,spec); return self end
 	function window:PlaySound(name,override) return sound:Play(name,override) end
+	function window:ShowLoading(options) return loading:Show(options) end
+	function window:HideLoading() loading:Hide(); return self end
+	function window:SetWatermark(spec) hud:SetWatermark(spec); return self end
+	function window:SetKeybindHUD(enabled) hud:SetKeybindHUD(enabled); return self end
+	function window:SetCustomCursor(enabled,options) cursor:SetEnabled(enabled,options); return self end
+	function window:SetNotificationPosition(position) notify:SetPosition(position); return self end
 	function window:OpenSearch(query) palette:Open(query or "","search"); return self end
 	function window:OpenCommands() palette:Open("> ","commands"); return self end
 	function window:Build(schema) return Build.Run(self,schema) end
@@ -954,6 +1078,9 @@ function BobloUI:CreateWindow(options)
 	local toggleKey=options.ToggleKey; if toggleKey==nil then toggleKey=Enum.KeyCode.RightShift end
 	if toggleKey~=false and typeof(toggleKey)=="EnumItem" then janitor:Add(input:BindKey("__window_toggle",toggleKey,"Toggle",function() if not unloaded then window:Toggle() end end)) end
 	if options.Scale then window:SetScale(options.Scale) end
+	if options.Watermark then window:SetWatermark(options.Watermark) end
+	if options.KeybindHUD then window:SetKeybindHUD(true) end
+	if options.CustomCursor then window:SetCustomCursor(true,type(options.CustomCursor)=="table" and options.CustomCursor or nil) end
 	if options.OnUnload then window:OnUnload(options.OnUnload) end
 	if singleton then globalRegistry().Instances[id]=window end
 
@@ -2418,6 +2545,21 @@ Draw.info = function(window, root)
 	rounded(window,root,{Size=UDim2.fromOffset(2,2),Position=UDim2.new(0.5,0,0.5,-4),AnchorPoint=Vector2.new(0.5,0.5)},1)
 end
 
+
+Draw.lock = function(window, root)
+	local body=rounded(window,root,{Size=UDim2.fromOffset(12,9),Position=UDim2.new(0.5,0,0.5,3),AnchorPoint=Vector2.new(0.5,0.5)},2)
+	local shackle=tag(Create.New("Frame",{Size=UDim2.fromOffset(8,8),Position=UDim2.new(0.5,0,0.5,-3),AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Parent=root})); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=shackle}); local st=tag(Create.New("UIStroke",{Thickness=1.4,Parent=shackle})); bindPart(window,st)
+	local mask=part(window,root,{Size=UDim2.fromOffset(10,5),Position=UDim2.new(0.5,0,0.5,1),AnchorPoint=Vector2.new(0.5,0.5)},"Canvas"); mask:SetAttribute("BobloIconMask",true)
+end
+Draw.image = function(window, root)
+	local frame=tag(Create.New("Frame",{Size=UDim2.fromOffset(16,13),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Parent=root})); Create.New("UICorner",{CornerRadius=UDim.new(0,2),Parent=frame}); local st=tag(Create.New("UIStroke",{Thickness=1.2,Parent=frame})); bindPart(window,st); rounded(window,root,{Size=UDim2.fromOffset(3,3),Position=UDim2.new(0.5,4,0.5,-3),AnchorPoint=Vector2.new(0.5,0.5)},1); line(window,root,-3,3,8,1.3,-35); line(window,root,3,3,7,1.3,35)
+end
+Draw.code = function(window, root)
+	line(window,root,-4,0,7,1.5,-45); line(window,root,-4,0,7,1.5,45); line(window,root,4,0,7,1.5,45); line(window,root,4,0,7,1.5,-45)
+end
+Draw.progress = function(window, root)
+	local track=rounded(window,root,{Size=UDim2.fromOffset(16,5),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5)},1,"TextDisabled"); local fill=rounded(window,root,{Size=UDim2.fromOffset(9,5),Position=UDim2.new(0.5,-3.5,0.5,0),AnchorPoint=Vector2.new(0.5,0.5)},1,"TextSecondary")
+end
 function Icon.setColor(instance, color)
 	if not instance then return end
 	local function apply(item)
@@ -3110,7 +3252,7 @@ end
 
 __modules["runtime/RuntimeManifest"] = function()
 -- generated by build/generate.mjs; edit build/manifest.json instead.
-return {["Button"]={["Method"]="AddButton",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Text"]="string?",["Variant"]="string?",["Confirm"]="string?"},["Required"]={"Title"},["Stateful"]=false},["Toggle"]={["Method"]="AddToggle",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Default"]="boolean?"},["Required"]={"Title"},["Stateful"]=true},["Slider"]={["Method"]="AddSlider",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Min"]="number",["Max"]="number",["Default"]="number?",["Step"]="number?",["Precision"]="number?",["Suffix"]="string?",["Format"]="function?"},["Required"]={"Title","Min","Max"},["Stateful"]=true},["Dropdown"]={["Method"]="AddDropdown",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Options"]="table",["Default"]="any?",["Multi"]="boolean?",["Searchable"]="boolean?",["AllowNone"]="boolean?",["Max"]="number?",["Placeholder"]="string?",["Style"]="string?"},["Required"]={"Title","Options"},["Stateful"]=true},["Input"]={["Method"]="AddInput",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Default"]="string|number?",["Placeholder"]="string?",["Numeric"]="boolean?",["MaxLength"]="number?",["Multiline"]="boolean?",["ClearOnFocus"]="boolean?",["Validate"]="function?",["CommitOn"]="string?"},["Required"]={"Title"},["Stateful"]=true},["Keybind"]={["Method"]="AddKeybind",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Default"]="EnumItem?",["Mode"]="string?",["AllowedModes"]="table?",["Blacklist"]="table?"},["Required"]={"Title"},["Stateful"]=true},["ColorPicker"]={["Method"]="AddColorPicker",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Default"]="Color3?",["Alpha"]="boolean?",["DefaultAlpha"]="number?",["Presets"]="table?"},["Required"]={"Title"},["Stateful"]=true},["Paragraph"]={["Method"]="AddParagraph",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Content"]="string?",["Variant"]="string?"},["Required"]={},["Stateful"]=false},["Divider"]={["Method"]="AddDivider",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?"},["Required"]={},["Stateful"]=false},["Status"]={["Method"]="AddStatus",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Value"]="any?",["Status"]="string?",["Pulse"]="boolean?"},["Required"]={"Title"},["Stateful"]=true}}
+return {["Button"]={["Method"]="AddButton",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Text"]="string?",["Variant"]="string?",["Confirm"]="string?"},["Required"]={"Title"},["Stateful"]=false},["Toggle"]={["Method"]="AddToggle",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Default"]="boolean?",["Style"]="string?"},["Required"]={"Title"},["Stateful"]=true},["Slider"]={["Method"]="AddSlider",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Min"]="number",["Max"]="number",["Default"]="number?",["Step"]="number?",["Precision"]="number?",["Suffix"]="string?",["Format"]="function?",["ValueInput"]="boolean?",["FloatingValue"]="boolean?",["IconFrom"]="string?",["IconTo"]="string?"},["Required"]={"Title","Min","Max"},["Stateful"]=true},["Dropdown"]={["Method"]="AddDropdown",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Options"]="table",["Default"]="any?",["Multi"]="boolean?",["Searchable"]="boolean?",["AllowNone"]="boolean?",["Max"]="number?",["Placeholder"]="string?",["Style"]="string?",["Source"]="any?"},["Required"]={"Title","Options"},["Stateful"]=true},["Input"]={["Method"]="AddInput",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Default"]="string|number?",["Placeholder"]="string?",["Numeric"]="boolean?",["MaxLength"]="number?",["Multiline"]="boolean?",["ClearOnFocus"]="boolean?",["Validate"]="function?",["CommitOn"]="string?",["Height"]="number?"},["Required"]={"Title"},["Stateful"]=true},["Keybind"]={["Method"]="AddKeybind",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Default"]="EnumItem?",["Mode"]="string?",["AllowedModes"]="table?",["Blacklist"]="table?"},["Required"]={"Title"},["Stateful"]=true},["ColorPicker"]={["Method"]="AddColorPicker",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Default"]="Color3?",["Alpha"]="boolean?",["DefaultAlpha"]="number?",["Presets"]="table?"},["Required"]={"Title"},["Stateful"]=true},["Paragraph"]={["Method"]="AddParagraph",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Content"]="string?",["Variant"]="string?"},["Required"]={},["Stateful"]=false},["Divider"]={["Method"]="AddDivider",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?"},["Required"]={},["Stateful"]=false},["Status"]={["Method"]="AddStatus",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Value"]="any?",["Status"]="string?",["Pulse"]="boolean?"},["Required"]={"Title"},["Stateful"]=true},["Progress"]={["Method"]="AddProgress",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Min"]="number?",["Max"]="number?",["Default"]="number?",["Suffix"]="string?",["ShowValue"]="boolean?",["Indeterminate"]="boolean?",["Format"]="function?"},["Required"]={"Title"},["Stateful"]=true},["Code"]={["Method"]="AddCode",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Code"]="string?",["Content"]="string?",["Language"]="string?",["Height"]="number?",["Copy"]="boolean?"},["Required"]={},["Stateful"]=false},["Image"]={["Method"]="AddImage",["Options"]={["Id"]="string?",["Title"]="string?",["Description"]="string?",["Keywords"]="table?",["Badge"]="string?",["Disabled"]="boolean|string?",["Visible"]="boolean?",["VisibleWhen"]="table|function?",["EnabledWhen"]="table|function?",["IgnoreConfig"]="boolean?",["Order"]="number?",["Callback"]="function?",["Tooltip"]="string|function?",["ContextMenu"]="table?",["Adaptive"]="boolean?",["Icon"]="string?",["IconColor"]="string|Color3?",["Image"]="string",["Height"]="number?",["Caption"]="string?",["ScaleType"]="EnumItem?"},["Required"]={"Image"},["Stateful"]=false}}
 
 end
 
@@ -3502,7 +3644,7 @@ local Manifest=__require("runtime/RuntimeManifest")
 local Validate=__require("runtime/Validate")
 local Build={}
 
-local TAB_KEYS={Id=true,Title=true,Description=true,Icon=true,Order=true,Badge=true,Group=true,Visible=true,Sections=true,Controls=true}
+local TAB_KEYS={Id=true,Title=true,Description=true,Icon=true,Order=true,Badge=true,Group=true,Visible=true,Locked=true,LockedReason=true,Sections=true,Controls=true}
 local SECTION_KEYS={Id=true,Title=true,Description=true,Collapsible=true,Collapsed=true,Column=true,Span=true,Layout=true,Visible=true,Controls=true}
 local function unknownKeys(value,allowed,path,errors)
 	for key in value do if not allowed[key] then table.insert(errors,`{path}.{tostring(key)}: unknown field`) end end
@@ -3554,7 +3696,7 @@ function Build.Run(window,schema)
 		local h=container[method](container,options); if h.Id then handles[h.Id]=h end; return h
 	end
 	for _,td in schema.Tabs do
-		local tab=window:AddTab({Id=td.Id,Title=td.Title,Description=td.Description,Icon=td.Icon,Order=td.Order,Badge=td.Badge,Group=td.Group,Visible=td.Visible}); if tab.Id then handles[tab.Id]=tab end
+		local tab=window:AddTab({Id=td.Id,Title=td.Title,Description=td.Description,Icon=td.Icon,Order=td.Order,Badge=td.Badge,Group=td.Group,Visible=td.Visible,Locked=td.Locked,LockedReason=td.LockedReason}); if tab.Id then handles[tab.Id]=tab end
 		for _,cd in td.Controls or {} do createControl(tab,cd) end
 		for _,sd in td.Sections or {} do
 			local section=tab:AddSection({Id=sd.Id,Title=sd.Title,Description=sd.Description,Collapsible=sd.Collapsible,Collapsed=sd.Collapsed,Column=sd.Column,Span=sd.Span,Layout=sd.Layout,Visible=sd.Visible}); if section.Id then handles[section.Id]=section end
@@ -3656,6 +3798,27 @@ function Config:LoadAuto() if self._autoload then return self:Load(self._autoloa
 function Config:RegisterMigration(from,to,fn) if to~=from+1 then error("[BobloUI] config migrations must be linear (N -> N+1).",2) end; self._migrations[from]=fn; return self end
 function Config:Destroy() if self._registryConn then self._registryConn:Disconnect() end; self.Saved:Destroy(); self.Loaded:Destroy(); self._pending={}; self._orphans={}; self._pendingCollapsed={} end
 return Config
+
+end
+
+__modules["services/Cursor"] = function()
+--!nonstrict
+local UserInputService=game:GetService("UserInputService")
+local Create=__require("runtime/Create")
+local Cursor={}; Cursor.__index=Cursor
+function Cursor.new(window) return setmetatable({_window=window,_enabled=false,_root=nil,_conn=nil,_oldMouseIcon=nil},Cursor) end
+function Cursor:SetEnabled(enabled,options)
+	enabled=enabled==true; if enabled==self._enabled then return self end; self._enabled=enabled
+	if not enabled then if self._conn then self._conn:Disconnect(); self._conn=nil end; if self._root then self._root:Destroy(); self._root=nil end; if self._oldMouseIcon~=nil then UserInputService.MouseIconEnabled=self._oldMouseIcon; self._oldMouseIcon=nil end; return self end
+	if self._window.Device.Class=="Phone" then self._enabled=false; return self end
+	options=options or {}; self._oldMouseIcon=UserInputService.MouseIconEnabled; UserInputService.MouseIconEnabled=false; local w=self._window
+	self._root=Create.New("Frame",{Size=UDim2.fromOffset(options.Size or 10,options.Size or 10),AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=0,BorderSizePixel=0,ZIndex=9999,Parent=w.Layers.Overlay}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=self._root}); w:_bind(self._root,{BackgroundColor3=options.Token or "Accent"})
+	local pos=UserInputService:GetMouseLocation(); self._root.Position=UDim2.fromOffset(pos.X,pos.Y)
+	self._conn=UserInputService.InputChanged:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseMovement and self._root then self._root.Position=UDim2.fromOffset(input.Position.X,input.Position.Y) end end); return self
+end
+function Cursor:IsEnabled() return self._enabled end
+function Cursor:Destroy() self:SetEnabled(false) end
+return Cursor
 
 end
 
@@ -3834,6 +3997,38 @@ return Favorites
 
 end
 
+__modules["services/HUD"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Janitor=__require("runtime/Janitor")
+local HUD={}; HUD.__index=HUD
+function HUD.new(window)
+	local self=setmetatable({_window=window,_janitor=Janitor.new("HUD"),_watermark=nil,_keybind=nil,_watermarkSpec=nil,_keybindEnabled=false,_alive=true},HUD)
+	self._janitor:Add(task.spawn(function() while self._alive do self:_refresh(); task.wait(0.25) end end)); return self
+end
+function HUD:_ensureWatermark()
+	if self._watermark then return end; local w=self._window
+	self._watermark=Create.New("TextLabel",{AutomaticSize=Enum.AutomaticSize.XY,Position=UDim2.fromOffset(12,w.Device.Insets.Top+12),BackgroundTransparency=0,BorderSizePixel=0,Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontSmall"),Text="",Parent=w.Layers.Toast}); Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=self._watermark}); Create.New("UIPadding",{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,6),PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,9),Parent=self._watermark}); local s=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._watermark}); w:_bind(self._watermark,{BackgroundColor3="SurfaceRaised",TextColor3="TextSecondary"}); w:_bind(s,{Color="Border"})
+end
+function HUD:SetWatermark(spec)
+	if spec==false or spec==nil then if self._watermark then self._watermark:Destroy(); self._watermark=nil end; self._watermarkSpec=nil; return self end
+	self._watermarkSpec=spec; self:_ensureWatermark(); self:_refresh(); return self
+end
+function HUD:_ensureKeybind()
+	if self._keybind then return end; local w=self._window
+	self._keybind=Create.New("Frame",{Size=UDim2.fromOffset(230,0),AutomaticSize=Enum.AutomaticSize.Y,Position=UDim2.new(0,12,1,-12),AnchorPoint=Vector2.new(0,1),BackgroundTransparency=0,BorderSizePixel=0,Parent=w.Layers.Toast}); Create.New("UICorner",{CornerRadius=UDim.new(0,8),Parent=self._keybind}); Create.New("UIPadding",{PaddingTop=UDim.new(0,8),PaddingBottom=UDim.new(0,8),PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),Parent=self._keybind}); self._keyLayout=Create.List(4); self._keyLayout.Parent=self._keybind; local s=Create.New("UIStroke",{Thickness=1,Transparency=0.5,Parent=self._keybind}); w:_bind(self._keybind,{BackgroundColor3="SurfaceRaised"}); w:_bind(s,{Color="Border"})
+end
+function HUD:SetKeybindHUD(enabled) self._keybindEnabled=enabled==true; if self._keybindEnabled then self:_ensureKeybind() elseif self._keybind then self._keybind:Destroy(); self._keybind=nil end; return self end
+function HUD:_refresh()
+	local w=self._window
+	if self._watermark and self._watermarkSpec then local text=if type(self._watermarkSpec)=="function" then select(2,pcall(self._watermarkSpec)) else self._watermarkSpec; self._watermark.Text=tostring(text or "") end
+	if self._keybindEnabled then self:_ensureKeybind(); for _,child in self._keybind:GetChildren() do if child:IsA("GuiObject") then child:Destroy() end end; for _,entry in w.Registry:Entries() do local h=entry.Handle; if entry.Type=="Keybind" and h and not h._destroyed then local v=h:GetValue(); local key=type(v)=="table" and v.Key or "None"; local row=Create.New("TextLabel",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Left,Text=`{h.Title or entry.Id}   [{key}]`,Parent=self._keybind}); w:_bind(row,{TextColor3=h:IsActive() and "Accent" or "TextSecondary"}) end end end
+end
+function HUD:Destroy() self._alive=false; self._janitor:Destroy(); if self._watermark then self._watermark:Destroy() end; if self._keybind then self._keybind:Destroy() end end
+return HUD
+
+end
+
 __modules["services/Interactions"] = function()
 --!nonstrict
 local Create=__require("runtime/Create")
@@ -3946,6 +4141,40 @@ return Interactions
 
 end
 
+__modules["services/Loading"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Loading={}; Loading.__index=Loading
+function Loading.new(window) return setmetatable({_window=window,_handle=nil},Loading) end
+function Loading:Show(options)
+	options=options or {}; if self._handle then self._handle:Dismiss(); self._handle=nil end
+	local w=self._window; local layer=w.Layers:Push({Scrim=true,ScrimTransparency=0.38,Modal=true,OnDismiss=function() self._handle=nil end})
+	local panel=Create.New("Frame",{Size=UDim2.fromOffset(math.min(420,w.Device.Viewport.X-32),180),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,Parent=layer.Container}); Create.New("UICorner",{CornerRadius=UDim.new(0,w.Tokens:Get("CornerLg")),Parent=panel}); local stroke=Create.New("UIStroke",{Thickness=1,Transparency=0.35,Parent=panel}); w:_bind(panel,{BackgroundColor3="SurfaceRaised"}); w:_bind(stroke,{Color="Border"})
+	local title=Create.New("TextLabel",{Size=UDim2.new(1,-32,0,24),Position=UDim2.fromOffset(16,16),BackgroundTransparency=1,Font=w.Fonts.Bold,TextSize=w.Tokens:Get("FontHeading"),TextXAlignment=Enum.TextXAlignment.Left,Text=options.Title or "Loading",Parent=panel}); w:_bind(title,{TextColor3="Text"})
+	local status=Create.New("TextLabel",{Size=UDim2.new(1,-32,0,42),Position=UDim2.fromOffset(16,48),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontBody"),TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,Text=options.Status or "Preparing…",Parent=panel}); w:_bind(status,{TextColor3="TextSecondary"})
+	local track=Create.New("Frame",{Size=UDim2.new(1,-32,0,6),Position=UDim2.fromOffset(16,108),BorderSizePixel=0,Parent=panel}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=track}); w:_bind(track,{BackgroundColor3="ControlInset"})
+	local fill=Create.New("Frame",{Size=UDim2.fromScale(math.clamp(options.Progress or 0,0,1),1),BorderSizePixel=0,Parent=track}); Create.New("UICorner",{CornerRadius=UDim.new(1,0),Parent=fill}); w:_bind(fill,{BackgroundColor3="Accent"})
+	local step=Create.New("TextLabel",{Size=UDim2.new(1,-32,0,18),Position=UDim2.fromOffset(16,122),BackgroundTransparency=1,Font=w.Fonts.Regular,TextSize=w.Tokens:Get("FontSmall"),TextXAlignment=Enum.TextXAlignment.Right,Text="",Parent=panel}); w:_bind(step,{TextColor3="TextTertiary"})
+	local actions=Create.New("Frame",{Size=UDim2.new(1,-32,0,30),Position=UDim2.fromOffset(16,144),BackgroundTransparency=1,Parent=panel}); local list=Create.List(6,Enum.FillDirection.Horizontal,{HorizontalAlignment=Enum.HorizontalAlignment.Right}); list.Parent=actions
+	local h={_layer=layer,_service=self,Frame=panel,_title=title,_status=status,_fill=fill,_step=step,_actions=actions,_dismissed=false}
+	function h:SetStatus(text) self._status.Text=tostring(text or ""); return self end
+	function h:SetProgress(value) self._fill.Size=UDim2.fromScale(math.clamp(tonumber(value) or 0,0,1),1); return self end
+	function h:SetStep(current,total,text) if text then self:SetStatus(text) end; local c=tonumber(current) or 0; local t=math.max(1,tonumber(total) or 1); self._step.Text=`{c} / {t}`; self:SetProgress(c/t); return self end
+	function h:SetError(message,buttons)
+		self:SetStatus(message); self._fill.BackgroundColor3=w.Theme:Get("Error")
+		for _,child in self._actions:GetChildren() do if child:IsA("GuiObject") then child:Destroy() end end
+		for _,spec in buttons or {} do local b=Create.New("TextButton",{AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),BackgroundTransparency=0,BorderSizePixel=0,Text="  "..tostring(spec.Text or "Retry").."  ",Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontSmall"),Parent=self._actions}); Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=b}); w:_bind(b,{BackgroundColor3=spec.Danger and "Error" or "ControlInset",TextColor3=spec.Danger and "AccentText" or "Text"}); b.MouseButton1Click:Connect(function() if spec.Callback then pcall(spec.Callback) end end) end
+		return self
+	end
+	function h:Dismiss() if self._dismissed then return end; self._dismissed=true; self._layer:Dismiss() end
+	self._handle=h; return h
+end
+function Loading:Hide() if self._handle then self._handle:Dismiss(); self._handle=nil end end
+function Loading:Destroy() self:Hide() end
+return Loading
+
+end
+
 __modules["services/Navigation"] = function()
 --!nonstrict
 -- Keyboard/gamepad focus navigation for controls in the active tab.
@@ -4039,8 +4268,8 @@ local Icon=__require("primitives/Icon")
 local Notify={}; Notify.__index=Notify
 local TOK={Default="Accent",Success="Success",Warning="Warning",Error="Error",Loading="Info"}
 
-function Notify.new(window)
-	local self=setmetatable({_window=window,_items={},_queue={},_host=nil,_janitor=Janitor.new("Notify")},Notify)
+function Notify.new(window,position)
+	local self=setmetatable({_window=window,_items={},_queue={},_host=nil,_janitor=Janitor.new("Notify"),_position=position or "BottomRight"},Notify)
 	self:_ensureHost(); self._janitor:Add(window.Device.Changed:Connect(function() self:_applyLayout() end)); self._janitor:Add(window.Theme.Changed:Connect(function() self:_refreshTheme() end)); return self
 end
 function Notify:_ensureHost()
@@ -4051,11 +4280,20 @@ end
 function Notify:_applyLayout()
 	if not self._host then return end; local w=self._window; local mobile=w.Device.Layout=="Drawer"
 	if mobile then
-		self._host.Size=UDim2.new(1,-16,0,math.min(500,w.Device.Viewport.Y-24)); self._host.Position=UDim2.fromOffset(8,w.Device.Insets.Top+8); self._host.AnchorPoint=Vector2.new(0,0); self._layout.VerticalAlignment=Enum.VerticalAlignment.Top
+		self._host.Size=UDim2.new(1,-16,0,math.min(500,w.Device.Viewport.Y-24))
+		if string.sub(self._position,1,6)=="Bottom" then self._host.Position=UDim2.new(0,8,1,-(w.Device.Insets.Bottom+8)); self._host.AnchorPoint=Vector2.new(0,1); self._layout.VerticalAlignment=Enum.VerticalAlignment.Bottom
+		else self._host.Position=UDim2.fromOffset(8,w.Device.Insets.Top+8); self._host.AnchorPoint=Vector2.new(0,0); self._layout.VerticalAlignment=Enum.VerticalAlignment.Top end
 	else
-		self._host.Size=UDim2.fromOffset(320,560); self._host.Position=UDim2.new(1,-14,1,-14); self._host.AnchorPoint=Vector2.new(1,1); self._layout.VerticalAlignment=Enum.VerticalAlignment.Bottom
+		self._host.Size=UDim2.fromOffset(320,560)
+		local pos=self._position
+		if pos=="TopLeft" then self._host.Position=UDim2.fromOffset(14,14); self._host.AnchorPoint=Vector2.new(0,0); self._layout.VerticalAlignment=Enum.VerticalAlignment.Top
+		elseif pos=="TopRight" then self._host.Position=UDim2.new(1,-14,0,14); self._host.AnchorPoint=Vector2.new(1,0); self._layout.VerticalAlignment=Enum.VerticalAlignment.Top
+		elseif pos=="BottomLeft" then self._host.Position=UDim2.new(0,14,1,-14); self._host.AnchorPoint=Vector2.new(0,1); self._layout.VerticalAlignment=Enum.VerticalAlignment.Bottom
+		else self._host.Position=UDim2.new(1,-14,1,-14); self._host.AnchorPoint=Vector2.new(1,1); self._layout.VerticalAlignment=Enum.VerticalAlignment.Bottom end
 	end
 end
+function Notify:SetPosition(position) self._position=position or "BottomRight"; self:_applyLayout(); return self end
+function Notify:GetPosition() return self._position end
 function Notify:_refreshTheme() for _,item in self._items do if item._dot then item._dot.BackgroundColor3=self._window.Theme:Get(TOK[item.Variant] or "Accent") end end end
 function Notify:_mount(item)
 	local w=self._window; local j=Janitor.new("Notification"); item._janitor=j; local hasActions=item.Actions and #item.Actions>0
@@ -4383,6 +4621,8 @@ function Settings:_syncAppearance()
 	if self._contrastControl then self._contrastControl:SetValue(w.Theme:IsHighContrast(),true) end
 	if self._navigationControl and w.Navigation then self._navigationControl:SetValue(w.Navigation:IsEnabled(),true) end
 	if self._sidebarControl and w.IsSidebarHidden then self._sidebarControl:SetValue(w:IsSidebarHidden(),true) end
+	if self._opacityControl and w.GetWindowOpacity then self._opacityControl:SetValue(math.floor(w:GetWindowOpacity()*100+0.5),true) end
+	if self._cursorControl and w.Cursor then self._cursorControl:SetValue(w.Cursor:IsEnabled(),true) end
 	if self._soundsControl and w.Sound then self._soundsControl:SetValue(w.Sound:IsEnabled(),true) end
 	if self._soundVolumeControl and w.Sound then self._soundVolumeControl:SetValue(math.floor(w.Sound:GetVolume()*100+0.5),true) end
 	for token,control in self._tokenControls do if control and not control._destroyed then control:SetValue(w.Theme:Get(token),true) end end
@@ -4415,6 +4655,9 @@ function Settings:_ensureMounted()
 	windowSec:AddToggle({Id="__settings.lock",Title="@settings.lockWindow",Default=w:IsLocked(),IgnoreConfig=true,Callback=function(v) w:SetLocked(v) end})
 	windowSec:AddToggle({Id="__settings.remember",Title="@settings.rememberGeometry",Default=w:GetRememberGeometry(),IgnoreConfig=true,Callback=function(v) w:SetRememberGeometry(v) end})
 	windowSec:AddToggle({Id="__settings.sidebar",Title="Hide sidebar",Default=w.IsSidebarHidden and w:IsSidebarHidden() or false,IgnoreConfig=true,Callback=function(v) if w.SetSidebarHidden then w:SetSidebarHidden(v) end end})
+	self._opacityControl=windowSec:AddSlider({Id="__settings.opacity",Title="Window opacity",Min=35,Max=100,Step=5,Default=w.GetWindowOpacity and math.floor(w:GetWindowOpacity()*100+0.5) or 100,Suffix="%",IgnoreConfig=true,Callback=function(v) if w.SetWindowOpacity then w:SetWindowOpacity(v/100) end end})
+	self._cursorControl=windowSec:AddToggle({Id="__settings.cursor",Title="Custom cursor",Default=w.Cursor and w.Cursor:IsEnabled() or false,IgnoreConfig=true,Callback=function(v) if w.SetCustomCursor then w:SetCustomCursor(v) end end})
+	windowSec:AddDropdown({Id="__settings.notifyPosition",Title="Notification position",Options={"BottomRight","BottomLeft","TopRight","TopLeft"},Default=w.Notify and w.Notify:GetPosition() or "BottomRight",IgnoreConfig=true,Callback=function(v) if w.SetNotificationPosition then w:SetNotificationPosition(v) end end})
 	windowSec:AddButton({Title="@settings.resetLayout",Text="@settings.reset",Callback=function() w:ResetGeometry() end})
 	windowSec:AddButton({Title="@settings.resetAll",Text="@settings.reset",Variant="Danger",Confirm="Reset every saved control to its default value?",Callback=function() w:ResetAll() end})
 
@@ -4516,13 +4759,50 @@ return Storage
 
 end
 
+__modules["shell/Row"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Janitor=__require("runtime/Janitor")
+local Button=__require("controls/Button"); local Toggle=__require("controls/Toggle"); local Slider=__require("controls/Slider"); local Dropdown=__require("controls/Dropdown"); local TextField=__require("controls/TextField"); local Keybind=__require("controls/Keybind"); local ColorPicker=__require("controls/ColorPicker"); local Paragraph=__require("controls/Paragraph"); local Divider=__require("controls/Divider"); local Status=__require("controls/Status"); local Progress=__require("controls/Progress"); local Code=__require("controls/Code"); local Image=__require("controls/Image")
+local Row={}; Row.__index=Row
+function Row.new(section,options)
+	options=options or {}; local self=setmetatable({_section=section,_window=section._window,_tab=section._tab,_janitor=Janitor.new("Row"),_controls={},_cells={},_mounted=false,_destroyed=false,Columns=math.clamp(tonumber(options.Columns) or 2,1,4),Gap=tonumber(options.Gap) or section._window.Tokens:Get("ColumnGap"),Title=section.Title},Row)
+	section._janitor:Add(self,"Destroy",self); section:_registerControl(self); if section._mounted then self:_mount() end; return self
+end
+function Row:_mount()
+	if self._mounted then return end; self._mounted=true
+	self._root=Create.New("Frame",{Name="ControlRow",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=0,Parent=self._section:_controlParent(self)}); self._janitor:Add(self._root)
+	self._layout=Create.List(self.Gap,Enum.FillDirection.Horizontal); self._layout.VerticalAlignment=Enum.VerticalAlignment.Top; self._layout.Parent=self._root
+	for _,control in self._controls do control:_mount() end
+end
+function Row:_newCell()
+	local index=#self._cells+1
+	if index>self.Columns then error(`[BobloUI] Row supports at most {self.Columns} controls. Create another row or increase Columns.`,3) end
+	local gap=self.Gap; local width=1/self.Columns; local offset=-gap*(self.Columns-1)/self.Columns
+	local cell=Create.New("Frame",{Name="Cell"..index,Size=UDim2.new(width,offset,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=index,Parent=self._root}); table.insert(self._cells,cell); return cell
+end
+function Row:_controlParent(control)
+	if control._rowCell and control._rowCell.Parent then return control._rowCell end
+	local cell=self:_newCell(); control._rowCell=cell; return cell
+end
+function Row:_registerControl(control) table.insert(self._controls,control); if self._mounted then control:_mount() end end
+function Row:_removeControl(control) local p=table.find(self._controls,control); if p then table.remove(self._controls,p) end; if control._rowCell then local c=control._rowCell; control._rowCell=nil; local cp=table.find(self._cells,c); if cp then table.remove(self._cells,cp) end; c:Destroy() end end
+function Row:_refreshSeparators() for _,c in self._controls do if c._separator then c._separator.Visible=false end end end
+function Row:SetCollapsed() return self end
+function Row:AddButton(o) return Button.new(self,o) end; function Row:AddToggle(o) return Toggle.new(self,o) end; function Row:AddSlider(o) return Slider.new(self,o) end; function Row:AddDropdown(o) return Dropdown.new(self,o) end; function Row:AddInput(o) return TextField.new(self,o) end; function Row:AddKeybind(o) return Keybind.new(self,o) end; function Row:AddColorPicker(o) return ColorPicker.new(self,o) end; function Row:AddParagraph(o) return Paragraph.new(self,o) end; function Row:AddDivider(o) return Divider.new(self,o or {}) end; function Row:AddStatus(o) return Status.new(self,o) end; function Row:AddProgress(o) return Progress.new(self,o) end; function Row:AddCode(o) return Code.new(self,o) end; function Row:AddImage(o) return Image.new(self,o) end
+function Row:Reset() for _,c in self._controls do if c.Reset then c:Reset() end end; return self end
+function Row:Destroy() if self._destroyed then return end; self._destroyed=true; self._section._janitor:Release(self); for _,c in table.clone(self._controls) do c:Destroy() end; self._janitor:Destroy(); self._section:_removeControl(self) end
+return Row
+
+end
+
 __modules["shell/Section"] = function()
 --!nonstrict
 local Create=__require("runtime/Create")
 local Janitor=__require("runtime/Janitor")
 local Surface=__require("primitives/Surface")
 local Icon=__require("primitives/Icon")
-local Button=__require("controls/Button"); local Toggle=__require("controls/Toggle"); local Slider=__require("controls/Slider"); local Dropdown=__require("controls/Dropdown"); local TextField=__require("controls/TextField"); local Keybind=__require("controls/Keybind"); local ColorPicker=__require("controls/ColorPicker"); local Paragraph=__require("controls/Paragraph"); local Divider=__require("controls/Divider"); local Status=__require("controls/Status")
+local Button=__require("controls/Button"); local Toggle=__require("controls/Toggle"); local Slider=__require("controls/Slider"); local Dropdown=__require("controls/Dropdown"); local TextField=__require("controls/TextField"); local Keybind=__require("controls/Keybind"); local ColorPicker=__require("controls/ColorPicker"); local Paragraph=__require("controls/Paragraph"); local Divider=__require("controls/Divider"); local Status=__require("controls/Status"); local Progress=__require("controls/Progress"); local Code=__require("controls/Code"); local Image=__require("controls/Image"); local Row=__require("shell/Row"); local TabBox=__require("shell/TabBox")
 local Section={}; Section.__index=Section
 function Section.new(tab,options)
 	options=options or {}
@@ -4610,7 +4890,7 @@ end
 function Section:_registerControl(c) table.insert(self._controls,c); if self._mounted then task.defer(function() if not self._destroyed then self:_reparentControls() end end) end end
 function Section:_removeControl(c) local p=table.find(self._controls,c); if p then table.remove(self._controls,p) end; if self._mounted then self:_reparentControls() else self:_refreshSeparators() end end
 function Section:AddCustom(name,o) local factory=self._window.CustomControls and self._window.CustomControls[name]; if not factory then error(`[BobloUI] unknown custom control "{tostring(name)}".`,2) end; return factory(self,o or {}) end
-function Section:AddButton(o) return Button.new(self,o) end; function Section:AddToggle(o) return Toggle.new(self,o) end; function Section:AddSlider(o) return Slider.new(self,o) end; function Section:AddDropdown(o) return Dropdown.new(self,o) end; function Section:AddInput(o) return TextField.new(self,o) end; function Section:AddKeybind(o) return Keybind.new(self,o) end; function Section:AddColorPicker(o) return ColorPicker.new(self,o) end; function Section:AddParagraph(o) return Paragraph.new(self,o) end; function Section:AddDivider(o) return Divider.new(self,o or {}) end; function Section:AddStatus(o) return Status.new(self,o) end
+function Section:AddButton(o) return Button.new(self,o) end; function Section:AddToggle(o) return Toggle.new(self,o) end; function Section:AddSlider(o) return Slider.new(self,o) end; function Section:AddDropdown(o) return Dropdown.new(self,o) end; function Section:AddInput(o) return TextField.new(self,o) end; function Section:AddKeybind(o) return Keybind.new(self,o) end; function Section:AddColorPicker(o) return ColorPicker.new(self,o) end; function Section:AddParagraph(o) return Paragraph.new(self,o) end; function Section:AddDivider(o) return Divider.new(self,o or {}) end; function Section:AddStatus(o) return Status.new(self,o) end; function Section:AddProgress(o) return Progress.new(self,o) end; function Section:AddCode(o) return Code.new(self,o) end; function Section:AddImage(o) return Image.new(self,o) end; function Section:AddRow(o) return Row.new(self,o or {}) end; function Section:AddTabBox(o) return TabBox.new(self,o or {}) end
 function Section:_refreshLocale() if self._title then self._title.Text=self._window.Locale:Resolve(self.Title or "") end; if self._desc then self._desc.Text=self._window.Locale:Resolve(self.Description or "") end; if self.Id then self._window.Registry:Update(self,{Title=self._window.Locale:Resolve(self.Title or "Section"),Path=self._window.Locale:Resolve(self._tab.Title)}) end; for _,control in self._controls do if control._refreshText then control:_refreshText() end end end
 function Section:SetTitle(t) self.Title=t; if self._title then self._title.Text=self._window.Locale:Resolve(t or "") end; if self.Id then self._window.Registry:Update(self,{Title=self._window.Locale:Resolve(t or "Section")}) end; return self end
 function Section:SetSpan(span)
@@ -4624,6 +4904,58 @@ function Section:SetCollapsed(v) self.Collapsed=v==true; if self._content then s
 function Section:GetInstance() return self._root end
 function Section:Destroy() if self._destroyed then return end; self._destroyed=true; self._tab._janitor:Release(self); if self.Id then self._window.Registry:Remove(self) end; local p=table.find(self._tab._sections,self); if p then table.remove(self._tab._sections,p) end; for _,control in table.clone(self._controls) do control:Destroy() end; self._janitor:Destroy(); if not self._tab._destroyed then self._tab:_scheduleSectionLayout() end end
 return Section
+
+end
+
+__modules["shell/TabBox"] = function()
+--!nonstrict
+local Create=__require("runtime/Create")
+local Janitor=__require("runtime/Janitor")
+local Button=__require("controls/Button"); local Toggle=__require("controls/Toggle"); local Slider=__require("controls/Slider"); local Dropdown=__require("controls/Dropdown"); local TextField=__require("controls/TextField"); local Keybind=__require("controls/Keybind"); local ColorPicker=__require("controls/ColorPicker"); local Paragraph=__require("controls/Paragraph"); local Divider=__require("controls/Divider"); local Status=__require("controls/Status"); local Progress=__require("controls/Progress"); local Code=__require("controls/Code"); local Image=__require("controls/Image")
+local TabBox={}; TabBox.__index=TabBox
+local SubTab={}; SubTab.__index=SubTab
+
+function SubTab.new(box,options)
+	local self=setmetatable({Id=options.Id or string.lower(string.gsub(options.Title,"%s+","-")),Title=options.Title,_options=options,_box=box,_window=box._window,_tab=box._tab,_janitor=Janitor.new("SubTab"),_controls={},_mounted=false,_destroyed=false},SubTab)
+	box._janitor:Add(self,"Destroy",self); return self
+end
+function SubTab:_mount()
+	if self._mounted or self._destroyed or not self._box._mounted then return end; self._mounted=true; local w=self._window
+	self._button=Create.New("TextButton",{AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,AutoButtonColor=false,Text="  "..self.Title.."  ",Font=w.Fonts.Medium,TextSize=w.Tokens:Get("FontSmall"),Parent=self._box._bar}); Create.New("UICorner",{CornerRadius=UDim.new(0,7),Parent=self._button}); w:_bind(self._button,{BackgroundColor3="AccentSoft",TextColor3="TextSecondary"})
+	self._page=Create.New("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,Visible=false,Parent=self._box._content}); self._layout=Create.List(w.Tokens:Get("RowGap")); self._layout.Parent=self._page
+	self._janitor:Add(self._button.MouseButton1Click:Connect(function() self._box:Select(self.Id) end))
+	for _,c in self._controls do c:_mount() end; self:_refreshSeparators()
+end
+function SubTab:_controlParent() return self._page end
+function SubTab:_registerControl(c) table.insert(self._controls,c); if self._mounted then c:_mount(); self:_refreshSeparators() end end
+function SubTab:_removeControl(c) local p=table.find(self._controls,c); if p then table.remove(self._controls,p) end; self:_refreshSeparators() end
+function SubTab:_refreshSeparators() local v={}; for _,c in self._controls do if c._root and c._root.Visible then table.insert(v,c) end end; for i,c in v do if c._separator then c._separator.Visible=i<#v end end end
+function SubTab:SetCollapsed(v) if not v then self._box:Select(self.Id) end; return self end
+function SubTab:AddButton(o) return Button.new(self,o) end; function SubTab:AddToggle(o) return Toggle.new(self,o) end; function SubTab:AddSlider(o) return Slider.new(self,o) end; function SubTab:AddDropdown(o) return Dropdown.new(self,o) end; function SubTab:AddInput(o) return TextField.new(self,o) end; function SubTab:AddKeybind(o) return Keybind.new(self,o) end; function SubTab:AddColorPicker(o) return ColorPicker.new(self,o) end; function SubTab:AddParagraph(o) return Paragraph.new(self,o) end; function SubTab:AddDivider(o) return Divider.new(self,o or {}) end; function SubTab:AddStatus(o) return Status.new(self,o) end; function SubTab:AddProgress(o) return Progress.new(self,o) end; function SubTab:AddCode(o) return Code.new(self,o) end; function SubTab:AddImage(o) return Image.new(self,o) end
+function SubTab:Destroy() if self._destroyed then return end; self._destroyed=true; for _,c in table.clone(self._controls) do c:Destroy() end; self._janitor:Destroy() end
+
+function TabBox.new(section,options)
+	options=options or {}; local self=setmetatable({_section=section,_window=section._window,_tab=section._tab,_janitor=Janitor.new("TabBox"),_tabs={},_active=nil,_mounted=false,_destroyed=false,Title=options.Title or section.Title},TabBox)
+	section._janitor:Add(self,"Destroy",self); section:_registerControl(self); if section._mounted then self:_mount() end; return self
+end
+function TabBox:_mount()
+	if self._mounted or self._destroyed then return end; self._mounted=true; local w=self._window; local t=w.Tokens
+	self._root=Create.New("Frame",{Name="TabBox",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,Parent=self._section:_controlParent(self)}); self._janitor:Add(self._root); local rootLayout=Create.List(8); rootLayout.Parent=self._root
+	self._bar=Create.New("Frame",{Size=UDim2.new(1,0,0,32),BackgroundTransparency=0,BorderSizePixel=0,Parent=self._root}); Create.New("UICorner",{CornerRadius=UDim.new(0,t:Get("FieldRadius")),Parent=self._bar}); w:_bind(self._bar,{BackgroundColor3="ControlInset"}); local l=Create.List(4,Enum.FillDirection.Horizontal); l.VerticalAlignment=Enum.VerticalAlignment.Center; l.Parent=self._bar; Create.New("UIPadding",{PaddingLeft=UDim.new(0,4),PaddingRight=UDim.new(0,4),Parent=self._bar})
+	self._content=Create.New("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,Parent=self._root})
+	for _,tab in self._tabs do tab:_mount() end; if self._active then self:Select(self._active.Id) elseif self._tabs[1] then self:Select(self._tabs[1].Id) end
+end
+function TabBox:AddTab(options)
+	if type(options)~="table" or type(options.Title)~="string" then error("[BobloUI] TabBox:AddTab requires Title.",2) end
+	local tab=SubTab.new(self,options); table.insert(self._tabs,tab); if self._mounted then tab:_mount() end; if not self._active then self._active=tab; if self._mounted then self:Select(tab.Id) end end; return tab
+end
+function TabBox:Select(id)
+	for _,tab in self._tabs do local active=tab.Id==id; if tab._page then tab._page.Visible=active end; if tab._button then tab._button.BackgroundTransparency=if active then 0 else 1; tab._button.TextColor3=self._window.Theme:Get(if active then "Text" else "TextSecondary") end; if active then self._active=tab end end; return self
+end
+function TabBox:_refreshSeparators() end
+function TabBox:Reset() for _,tab in self._tabs do for _,c in tab._controls do if c.Reset then c:Reset() end end end; return self end
+function TabBox:Destroy() if self._destroyed then return end; self._destroyed=true; self._section._janitor:Release(self); for _,tab in table.clone(self._tabs) do tab:Destroy() end; self._janitor:Destroy(); self._section:_removeControl(self) end
+return TabBox
 
 end
 
@@ -4737,6 +5069,8 @@ function Tab.new(window, options)
 		Icon = options.Icon,
 		Badge = options.Badge,
 		Group = options.Group,
+		Locked = options.Locked == true,
+		LockedReason = options.LockedReason,
 		Order = options.Order or (#window._tabs + 1),
 
 		_window = window,
@@ -4813,6 +5147,10 @@ function Tab.new(window, options)
 		end
 	end))
 	self._janitor:Add(button.MouseButton1Click:Connect(function()
+		if self.Locked then
+			if window.Notify then window.Notify:Push({Title=self.Title,Content=self.LockedReason or "This tab is locked",Variant="Warning",Duration=3}) end
+			return
+		end
 		self:Select()
 	end))
 
@@ -5058,6 +5396,11 @@ function Tab:AddColorPicker(o) return self:_default():AddColorPicker(o) end
 function Tab:AddParagraph(o) return self:_default():AddParagraph(o) end
 function Tab:AddDivider(o) return self:_default():AddDivider(o) end
 function Tab:AddStatus(o) return self:_default():AddStatus(o) end
+function Tab:AddProgress(o) return self:_default():AddProgress(o) end
+function Tab:AddCode(o) return self:_default():AddCode(o) end
+function Tab:AddImage(o) return self:_default():AddImage(o) end
+function Tab:AddRow(o) return self:_default():AddRow(o or {}) end
+function Tab:AddTabBox(o) return self:_default():AddTabBox(o or {}) end
 
 function Tab:Select()
 	self._window:_selectTab(self)
@@ -5148,6 +5491,13 @@ function Tab:SetVisible(visible: boolean)
 	end
 	return self
 end
+function Tab:SetLocked(locked, reason)
+	self.Locked=locked==true; if reason~=nil then self.LockedReason=reason end
+	if self._label then self._label.TextTransparency=if self.Locked then 0.38 else 0 end
+	if self.Locked and self._selected then self._window:_selectFirstVisible() end
+	return self
+end
+function Tab:IsLocked() return self.Locked==true end
 
 function Tab:GetInstance(): Instance
 	return self._page
@@ -5207,6 +5557,12 @@ function Window.new(context, options)
 		_sidebarHidden = options.SidebarHidden == true,
 		_cornerRadius = options.CornerRadius or context.Tokens:Get("CornerLg"),
 		_footerHeight = options.FooterHeight or 18,
+		_windowOpacity = math.clamp(tonumber(options.Opacity) or 1,0.25,1),
+		_tabTransition = options.TabTransition or {Style="Slide",Duration=0.12},
+		_windowAnimation = options.WindowAnimation or {Style="Slide",Duration=0.12,Offset=8},
+		_visibilityToken = 0,
+		_topbarItems = {},
+		_restoreSpec = options.RestoreButton or {},
 	}, Window)
 
 	self:_build()
@@ -5284,6 +5640,7 @@ function Window:_build()
 		Parent = self._root,
 	})
 	self:_bind(self._root, { BackgroundColor3 = "Canvas" })
+	self._backgroundImage = New("ImageLabel", {Name="BackgroundImage",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,Image="",ImageTransparency=1,ScaleType=Enum.ScaleType.Crop,Visible=false,ZIndex=1,Parent=self._root})
 	self._rootStroke.Transparency = 0.42
 	self:_bind(self._rootStroke, { Color = "BorderStrong" })
 
@@ -5291,6 +5648,8 @@ function Window:_build()
 	self:_buildBody()
 	self:_buildFooter()
 	self:_buildResizeGrip()
+	self:SetWindowOpacity(self._windowOpacity)
+	if options.BackgroundImage then self:SetBackgroundImage(options.BackgroundImage, options.BackgroundImageTransparency) end
 
 	-- Covers a theme swap so 2000 instant assignments read as one transition
 	-- instead of a flicker. Cheaper than tweening every binding.
@@ -5315,6 +5674,7 @@ function Window:_build()
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = self._restoreButton })
 	self:_bind(self._restoreButton, { BackgroundColor3 = "Accent", TextColor3 = "AccentText" })
 	self._janitor:Add(self._restoreButton.MouseButton1Click:Connect(function() self:Show() end))
+	self:SetRestoreButton(self._restoreSpec)
 end
 
 function Window:_buildHeader()
@@ -5410,6 +5770,9 @@ function Window:_buildHeader()
 		Parent = self._header,
 	})
 	self:_bind(self._subtitleLabel, { TextColor3 = "TextSecondary" })
+
+	self._topbarExtras = New("Frame", {Name="TopbarExtras",Size=UDim2.fromOffset(230,30),Position=UDim2.new(1,-188,0.5,0),AnchorPoint=Vector2.new(1,0.5),BackgroundTransparency=1,Visible=false,Parent=self._header})
+	local topbarLayout=Create.List(5,Enum.FillDirection.Horizontal,{HorizontalAlignment=Enum.HorizontalAlignment.Right,VerticalAlignment=Enum.VerticalAlignment.Center}); topbarLayout.Parent=self._topbarExtras
 
 	self._sidebarButton = New("TextButton", {
 		Name = "SidebarToggle",
@@ -5754,6 +6117,7 @@ function Window:_applyLayout(layout: string, initial: boolean?)
 	self:_applyTokens()
 	self:_applyGeometry()
 	self:_refreshHeaderTitle()
+	self:_refreshTopbarLayout()
 end
 
 --- Re-reads every metric from Tokens. Called on density change and on layout
@@ -5804,6 +6168,7 @@ function Window:_applyTokens()
 		tab._button.Size = UDim2.new(1, 0, 0, tokens:Get("NavItemHeight"))
 		tab._label.TextSize = tokens:Get("FontBody")
 	end
+	self:_refreshTopbarLayout()
 	self:_scheduleSectionLayouts()
 end
 
@@ -5822,6 +6187,7 @@ function Window:_applyGeometry()
 		local maxHeight = math.max(260, (safeSize.Y - 40)/scale)
 		self._root.Size = UDim2.fromOffset(math.min(self._size.X.Offset, maxWidth), math.min(self._size.Y.Offset, maxHeight))
 	end
+	self:_refreshTopbarLayout()
 	self:_scheduleSectionLayouts()
 end
 
@@ -5955,26 +6321,68 @@ function Window:GetTab(id: string)
 end
 
 function Window:_selectTab(tab)
-	if self._active == tab then
-		return
-	end
-	if self._active then
-		self._active:_setSelected(false)
-	end
-	self._active = tab
-	tab:_setSelected(true)
-	self:_refreshHeaderTitle()
-	self:CloseDrawer()
+	if tab.Locked then if self.Notify then self.Notify:Push({Title=tab.Title,Content=tab.LockedReason or "This tab is locked",Variant="Warning",Duration=3}) end; return end
+	if self._active == tab then return end
+	if self._active then self._active:_setSelected(false) end
+	self._active = tab; tab:_setSelected(true)
+	local tr=self._tabTransition or {}; if tab._page and tr.Style~="None" then local offset=tonumber(tr.Offset) or 10; local dir=tr.Direction or "Right"; local x,y=0,0; if dir=="Left" then x=-offset elseif dir=="Up" then y=-offset elseif dir=="Down" then y=offset else x=offset end; tab._page.Position=UDim2.fromOffset(x,y); self.Motion:Tween(tab._page,TweenInfo.new(tonumber(tr.Duration) or 0.12,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=UDim2.new()}) end
+	self:_refreshHeaderTitle(); self:CloseDrawer()
 end
 
 function Window:_selectFirstVisible()
 	self._active = nil
 	for _, tab in self._tabs do
-		if tab._button.Visible then
+		if tab._button.Visible and not tab.Locked then
 			self:_selectTab(tab)
 			return
 		end
 	end
+end
+
+function Window:_refreshTopbarLayout()
+	if not self._topbarExtras or not self._titleLabel then return end
+	local count=0; for _,item in self._topbarItems do if item.Instance and item.Instance.Parent then count+=1 end end
+	local visible=count>0 and self._layout~="Drawer" and self._root.AbsoluteSize.X>=680
+	self._topbarExtras.Visible=visible
+	local titleLeft=if self._layout=="Drawer" then 48 else 52
+	local reserve=if visible then 414 else 184
+	self._titleLabel.Size=UDim2.new(1,-titleLeft-reserve,0,if self._subtitleLabel.Visible then 20 else self.Tokens:Get("HeaderHeight"))
+end
+
+function Window:AddTopbarButton(options)
+	options=options or {}; local w=self; local item={Id=options.Id or tostring(#self._topbarItems+1),_window=self}
+	local b=New("TextButton",{AutomaticSize=if options.Text then Enum.AutomaticSize.X else Enum.AutomaticSize.None,Size=if options.Text then UDim2.fromOffset(0,28) else UDim2.fromOffset(28,28),BackgroundTransparency=0.82,BorderSizePixel=0,AutoButtonColor=false,Text=options.Text and ("  "..tostring(options.Text).."  ") or "",Font=self.Fonts.Medium,TextSize=self.Tokens:Get("FontCaption"),LayoutOrder=options.Order or #self._topbarItems+1,Parent=self._topbarExtras}); New("UICorner",{CornerRadius=UDim.new(0,self.Tokens:Get("CornerSm")),Parent=b}); self:_bind(b,{BackgroundColor3="ControlHover",TextColor3="TextSecondary"})
+	if options.Icon and not options.Text then item.Icon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(15,15),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b}); Icon.setColor(item.Icon,self.Theme:Get("TextSecondary")) end
+	self._janitor:Add(b.MouseButton1Click:Connect(function() if options.Callback then local ok,err=xpcall(options.Callback,debug.traceback,item); if not ok then warn(err) end end end)); item.Instance=b
+	function item:SetText(text) b.Text="  "..tostring(text or "").."  "; return self end; function item:SetVisible(v) b.Visible=v==true; return self end; function item:Destroy() if b and b.Parent then b:Destroy() end; local p=table.find(w._topbarItems,self); if p then table.remove(w._topbarItems,p) end; w:_refreshTopbarLayout() end
+	table.insert(self._topbarItems,item); self:_refreshTopbarLayout(); return item
+end
+function Window:AddTopbarTag(options)
+	if type(options)=="string" then options={Text=options} end; options=options or {}; local item={Id=options.Id or tostring(#self._topbarItems+1)}; local label=New("TextLabel",{AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.fromOffset(0,24),BackgroundTransparency=0,BorderSizePixel=0,Text="  "..tostring(options.Text or "").."  ",Font=self.Fonts.Medium,TextSize=self.Tokens:Get("FontCaption"),LayoutOrder=options.Order or #self._topbarItems+1,Parent=self._topbarExtras}); New("UICorner",{CornerRadius=UDim.new(1,0),Parent=label}); self:_bind(label,{BackgroundColor3=options.Token or "AccentSoft",TextColor3=options.TextToken or "TextSecondary"}); item.Instance=label; function item:SetText(text) label.Text="  "..tostring(text or "").."  "; return self end; function item:SetVisible(v) label.Visible=v==true; return self end; function item:Destroy() if label.Parent then label:Destroy() end; local p=table.find(self._window and self._window._topbarItems or {},self); if p and self._window then table.remove(self._window._topbarItems,p); self._window:_refreshTopbarLayout() end end; item._window=self; table.insert(self._topbarItems,item); self:_refreshTopbarLayout(); return item
+end
+function Window:SetWindowOpacity(opacity)
+	self._windowOpacity=math.clamp(tonumber(opacity) or 1,0.25,1); local tr=1-self._windowOpacity; for _,obj in {self._root,self._header,self._navPanel,self._content,self._footer} do if obj then obj.BackgroundTransparency=tr end end; return self
+end
+function Window:GetWindowOpacity() return self._windowOpacity end
+function Window:SetBackgroundImage(image,transparency,surfaceOpacity)
+	if not self._backgroundImage then return self end
+	if not image or image=="" then self._backgroundImage.Visible=false; self._backgroundImage.Image=""; return self end
+	self._backgroundImage.Image=tostring(image); self._backgroundImage.ImageTransparency=math.clamp(tonumber(transparency) or 0.18,0,1); self._backgroundImage.Visible=true
+	if surfaceOpacity~=nil then self:SetWindowOpacity(surfaceOpacity) elseif self._windowOpacity>=0.999 then self:SetWindowOpacity(0.9) end
+	return self
+end
+function Window:SetTabTransition(options) self._tabTransition=options or {Style="None"}; return self end
+function Window:SetWindowAnimation(options) self._windowAnimation=options or {Style="None"}; return self end
+function Window:SetRestoreButton(options)
+	options=options or {}; self._restoreSpec=options; local b=self._restoreButton; if not b then return self end
+	if options.Size then local size=options.Size; if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end end
+	if options.Position and typeof(options.Position)=="UDim2" then b.Position=options.Position end
+	if self._restoreIcon then self._restoreIcon:Destroy(); self._restoreIcon=nil end
+	if options.Icon then b.Text=""; self._restoreIcon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(18,18),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b}); Icon.setColor(self._restoreIcon,self.Theme:Get("AccentText")) else b.Text=tostring(options.Text or self.Title:sub(1,1):upper()) end
+	local c=b:FindFirstChildOfClass("UICorner"); if c then if options.Shape=="Rounded" then c.CornerRadius=UDim.new(0,self.Tokens:Get("CornerMd")) elseif options.Shape=="Square" then c.CornerRadius=UDim.new(0,3) else c.CornerRadius=UDim.new(1,0) end end
+	self._janitor:Remove("restoreDrag")
+	if options.Draggable then local base=b.Position; self._janitor:Add(self.Input:AttachDrag(b,function(delta) b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y) end,function() if self._visible then return false end; base=b.Position; return true end),"Destroy","restoreDrag") end
+	return self
 end
 
 function Window:SetLocked(locked) self._locked=locked==true; if self._grip then self._grip.Visible=not self._locked and self._layout~="Drawer" end; if self._footerHint then self._footerHint.Visible=not self._locked and self._layout~="Drawer" end; return self end
@@ -6010,18 +6418,25 @@ function Window:ResetAll() self.State:Batch(function() for _,entry in self.Regis
 
 -- ===== visibility ================================================
 
+function Window:_animatedPosition(base, offset)
+	local style=(self._windowAnimation and self._windowAnimation.Style) or "None"
+	if style=="SlideLeft" then return UDim2.new(base.X.Scale,base.X.Offset-offset,base.Y.Scale,base.Y.Offset)
+	elseif style=="SlideRight" then return UDim2.new(base.X.Scale,base.X.Offset+offset,base.Y.Scale,base.Y.Offset)
+	elseif style=="SlideUp" then return UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,base.Y.Offset-offset)
+	else return UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,base.Y.Offset+offset) end
+end
 function Window:Show()
-	self._visible = true
-	self._root.Visible = true
-	if self._restoreButton then self._restoreButton.Visible = false end
+	self._visibilityToken+=1; local token=self._visibilityToken; self._visible=true
+	local root=self._root; local target=self._hiddenRestPosition or root.Position; self._hiddenRestPosition=nil; root.Visible=true; if self._restoreButton then self._restoreButton.Visible=false end
+	local spec=self._windowAnimation or {}; if self._layout~="Drawer" and spec.Style~="None" then local offset=tonumber(spec.Offset) or 8; root.Position=self:_animatedPosition(target,offset); self.Motion:Tween(root,TweenInfo.new(tonumber(spec.Duration) or 0.12,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=target}) else root.Position=target end
 	return self
 end
 
 function Window:Hide()
-	self._visible = false
-	self._root.Visible = false
-	if self._restoreButton then self._restoreButton.Visible = true end
-	self:CloseDrawer()
+	if not self._visible then return self end; self._visibilityToken+=1; local token=self._visibilityToken; self._visible=false; self:CloseDrawer()
+	local root=self._root; local target=root.Position; self._hiddenRestPosition=target; local spec=self._windowAnimation or {}
+	if self._layout~="Drawer" and spec.Style~="None" then local tween=self.Motion:Tween(root,TweenInfo.new(tonumber(spec.Duration) or 0.12,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Position=self:_animatedPosition(target,tonumber(spec.Offset) or 8)}); if tween then tween.Completed:Once(function() if self._visibilityToken==token and not self._visible then root.Visible=false; root.Position=target; if self._restoreButton then self._restoreButton.Visible=true end end end) else root.Visible=false; root.Position=target; if self._restoreButton then self._restoreButton.Visible=true end end
+	else root.Visible=false; if self._restoreButton then self._restoreButton.Visible=true end end
 	return self
 end
 
