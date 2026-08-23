@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.10.2-beta.1 - generated bundle, do not edit.
+	BobloUI v0.10.3-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T09:53:59.002Z
+	Built: 2026-08-23T10:00:01.670Z
 	Modules: 55
 ]]
 local __modules = {}
@@ -79,7 +79,10 @@ end
 
 function Base:_effectiveLayout()
 	if self._baseLayoutStyle=="Stacked" then return "Stacked" end
-	if self._adaptive and self._root and self._root.AbsoluteSize.X>0 and self._root.AbsoluteSize.X < self._window.Tokens:Get("ControlStackBreakpoint") then return "Stacked" end
+	if self._adaptive and self._root and self._root.AbsoluteSize.X>0 then
+		local scale=math.max(0.01,self._window._scale or 1)
+		if (self._root.AbsoluteSize.X/scale) < self._window.Tokens:Get("ControlStackBreakpoint") then return "Stacked" end
+	end
 	return "Inline"
 end
 function Base:_measure()
@@ -836,7 +839,7 @@ local Navigation=__require("services/Navigation")
 local HttpService=game:GetService("HttpService")
 
 local BobloUI={}
-BobloUI.Version="0.10.2-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.10.3-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -915,7 +918,14 @@ function BobloUI:CreateWindow(options)
 	function window:RegisterTheme(name,palette) theme:Register(name,palette); return self end
 	function window:SetDensity(density) tokens:SetDensity(density); return self end
 	function window:SetScale(scale)
-		local root=self:GetInstance(); local uiScale=root:FindFirstChildOfClass("UIScale"); if not uiScale then uiScale=Instance.new("UIScale"); uiScale.Parent=root end; self._scale=math.clamp(scale,0.5,2); uiScale.Scale=self._scale; return self
+		local root=self:GetInstance()
+		local uiScale=root:FindFirstChildOfClass("UIScale")
+		if not uiScale then uiScale=Instance.new("UIScale"); uiScale.Parent=root end
+		self._scale=math.clamp(scale,0.5,2)
+		uiScale.Scale=self._scale
+		if self._applyGeometry then self:_applyGeometry() end
+		if self._scheduleSectionLayouts then self:_scheduleSectionLayouts() end
+		return self
 	end
 	function window:GetScale() return self._scale or 1 end
 	function window:ExportTheme(copy) local raw=HttpService:JSONEncode(theme:Export()); if copy then Env.SetClipboard(raw) end; return raw end
@@ -4547,7 +4557,8 @@ end
 function Section:_wantedContentLayout()
 	if self.Layout=="Stack" or self.Layout=="Grid" then return self.Layout end
 	if not self._root then return "Stack" end
-	return self._root.AbsoluteSize.X>=self._window.Tokens:Get("ControlGridMinWidth") and "Grid" or "Stack"
+	local scale=math.max(0.01,self._window._scale or 1)
+	return (self._root.AbsoluteSize.X/scale)>=self._window.Tokens:Get("ControlGridMinWidth") and "Grid" or "Stack"
 end
 function Section:_destroyGridColumns()
 	for _,col in self._gridColumns or {} do if col and col.Parent then col:Destroy() end end
@@ -4867,6 +4878,7 @@ function Tab.new(window, options)
 		Position = UDim2.fromOffset(pagePadding, self._introHeight),
 		AutomaticSize = Enum.AutomaticSize.None,
 		BackgroundTransparency = 1,
+		ClipsDescendants = true,
 		Parent = self._page,
 	})
 	self._emptyState = New("TextLabel", {
@@ -4960,8 +4972,11 @@ end
 function Tab:_applySectionLayout(layout)
 	if not self._sectionHost or not self._sectionHost.Parent then return end
 	local t=self._window.Tokens
-	local available=math.floor(self._sectionHost.AbsoluteSize.X+0.5)
-	if available<=0 then available=math.max(0,math.floor(self._page.AbsoluteSize.X-(t:Get("PagePadding")*2)+0.5)) end
+	local scale=math.max(0.01,self._window._scale or 1)
+	-- AbsoluteSize already includes UIScale. Convert back to logical pixels before
+	-- assigning Offset sizes, otherwise a 110% UI scale gets applied twice.
+	local available=math.floor((self._sectionHost.AbsoluteSize.X/scale)+0.5)
+	if available<=0 then available=math.max(0,math.floor((self._page.AbsoluteSize.X/scale)-(t:Get("PagePadding")*2)+0.5)) end
 	local gap=t:Get("ColumnGap")
 	local minWidth=t:Get("MinSectionWidth")
 	local twoColumn=(layout~="Drawer") and available >= math.max(t:Get("TwoColumnMinWidth"),minWidth*2+gap)
@@ -4975,7 +4990,8 @@ function Tab:_applySectionLayout(layout)
 		end
 	end
 	local function heightOf(section)
-		return math.max(1,math.floor((section._root and section._root.AbsoluteSize.Y or 1)+0.5))
+		local physical=(section._root and section._root.AbsoluteSize.Y or scale)
+		return math.max(1,math.floor((physical/scale)+0.5))
 	end
 	if not twoColumn then
 		local y=0
@@ -5310,6 +5326,7 @@ function Window:_buildHeader()
 		BorderSizePixel = 0,
 		Parent = self._root,
 	})
+	self._headerCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._header })
 	self:_bind(self._header, { BackgroundColor3 = "Canvas" })
 
 	self._headerLine = New("Frame", {
@@ -5581,6 +5598,7 @@ function Window:_buildFooter()
 		BorderSizePixel = 0,
 		Parent = self._root,
 	})
+	self._footerCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._footer })
 	self:_bind(self._footer, { BackgroundColor3 = "Canvas" })
 	self._footerLine = New("Frame", {
 		Name = "Divider",
@@ -5617,29 +5635,48 @@ function Window:_buildResizeGrip()
 		ZIndex = 5,
 		Parent = self._footer,
 	})
-	for index = 0, 2 do
-		local bar = New("Frame", {
-			Size = UDim2.fromOffset(8 + index * 2, 1.5),
-			Position = UDim2.new(1, -(12 + index * 4), 1, -(5 + index * 4)),
-			AnchorPoint = Vector2.new(1, 1),
-			Rotation = -45,
-			BorderSizePixel = 0,
-			Parent = self._grip,
-		})
-		New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = bar })
-		self:_bind(bar, { BackgroundColor3 = "TextSecondary" })
-	end
+	-- A crisp, conventional bottom-right resize mark. The old three diagonal
+	-- strokes were offset from one another and looked crooked at small scales.
+	local horizontal = New("Frame", {
+		Size = UDim2.fromOffset(13, 1.5),
+		Position = UDim2.new(1, -8, 1, -4),
+		AnchorPoint = Vector2.new(1, 1),
+		BorderSizePixel = 0,
+		Parent = self._grip,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = horizontal })
+	self:_bind(horizontal, { BackgroundColor3 = "TextSecondary" })
+	local vertical = New("Frame", {
+		Size = UDim2.fromOffset(1.5, 13),
+		Position = UDim2.new(1, -4, 1, -8),
+		AnchorPoint = Vector2.new(1, 1),
+		BorderSizePixel = 0,
+		Parent = self._grip,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = vertical })
+	self:_bind(vertical, { BackgroundColor3 = "TextSecondary" })
+	local diagonal = New("Frame", {
+		Size = UDim2.fromOffset(8, 1.5),
+		Position = UDim2.new(1, -10, 1, -10),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Rotation = -45,
+		BorderSizePixel = 0,
+		Parent = self._grip,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = diagonal })
+	self:_bind(diagonal, { BackgroundColor3 = "TextSecondary" })
 
 	self._janitor:Add(self._grip.InputBegan:Connect(function(input)
 		if self._layout == "Drawer" or self._locked then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
 		local startPosition = input.Position
-		local startSize = self._root.AbsoluteSize
+		local scale=math.max(0.01,self._scale or 1)
+		local startSize = self._root.AbsoluteSize/scale
 		self.Input:CapturePointer(self._grip, input, function(move)
-			local delta = move.Position - startPosition
+			local delta = (move.Position - startPosition)/scale
 			local _, safeSize = self.Device:SafeArea()
-			local maxWidth = math.max(320, safeSize.X - 40)
-			local maxHeight = math.max(260, safeSize.Y - 40)
+			local maxWidth = math.max(320, (safeSize.X - 40)/scale)
+			local maxHeight = math.max(260, (safeSize.Y - 40)/scale)
 			local minWidth = math.min(self._minSize.X, maxWidth)
 			local minHeight = math.min(self._minSize.Y, maxHeight)
 			local width = math.clamp(startSize.X + delta.X, minWidth, maxWidth)
@@ -5738,6 +5775,8 @@ function Window:_applyTokens()
 		self._footer.Position = UDim2.new(0, 0, 1, -self._footerHeight)
 	end
 	if self._rootCorner then self._rootCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
+	if self._headerCorner then self._headerCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
+	if self._footerCorner then self._footerCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
 
 	self._titleLabel.TextSize = tokens:Get("FontTitle")
 	self._subtitleLabel.TextSize = tokens:Get("FontSmall")
@@ -5778,8 +5817,9 @@ function Window:_applyGeometry()
 		self._root.AnchorPoint = Vector2.new(0.5, 0.5)
 		if self._root.Position.X.Scale == 0 then self._root.Position = UDim2.fromScale(0.5, 0.5) end
 		local _, safeSize = self.Device:SafeArea()
-		local maxWidth = math.max(320, safeSize.X - 40)
-		local maxHeight = math.max(260, safeSize.Y - 40)
+		local scale=math.max(0.01,self._scale or 1)
+		local maxWidth = math.max(320, (safeSize.X - 40)/scale)
+		local maxHeight = math.max(260, (safeSize.Y - 40)/scale)
 		self._root.Size = UDim2.fromOffset(math.min(self._size.X.Offset, maxWidth), math.min(self._size.Y.Offset, maxHeight))
 	end
 	self:_scheduleSectionLayouts()
@@ -5948,7 +5988,10 @@ function Window:SetCornerRadius(radius)
 	if type(radius)=="boolean" then radius = if radius then self.Tokens:Get("CornerLg") else 0 end
 	if type(radius)~="number" then error("[BobloUI] Window:SetCornerRadius expects number.",2) end
 	self._cornerRadius = math.max(0, math.floor(radius + 0.5))
-	if self._rootCorner then self._rootCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
+	local value=UDim.new(0,self._cornerRadius)
+	if self._rootCorner then self._rootCorner.CornerRadius = value end
+	if self._headerCorner then self._headerCorner.CornerRadius = value end
+	if self._footerCorner then self._footerCorner.CornerRadius = value end
 	return self
 end
 function Window:SetRounded(enabled) return self:SetCornerRadius(enabled and self.Tokens:Get("CornerLg") or 0) end
