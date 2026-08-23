@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.10.1-beta.1 - generated bundle, do not edit.
+	BobloUI v0.10.2-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T09:25:26.866Z
+	Built: 2026-08-23T09:53:59.002Z
 	Modules: 55
 ]]
 local __modules = {}
@@ -836,7 +836,7 @@ local Navigation=__require("services/Navigation")
 local HttpService=game:GetService("HttpService")
 
 local BobloUI={}
-BobloUI.Version="0.10.1-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.10.2-beta.1"; BobloUI.ApiLevel=10; BobloUI.Env=Env; BobloUI.Icon=Icon
 local REGISTRY_KEY="__BobloUI"
 local function globalRegistry()
 	local existing=Env.Globals[REGISTRY_KEY]; if type(existing)=="table" and type(existing.Instances)=="table" then return existing end
@@ -4366,7 +4366,7 @@ function Settings:_syncAppearance()
 	if self._themeControl then self._themeControl:SetOptions(w.Theme:List()); self._themeControl:SetValue(w.Theme:Current(),true) end
 	if self._accentControl then self._accentControl:SetValue(w.Theme:Get("Accent"),true) end
 	if self._scaleControl then self._scaleControl:SetValue(math.floor((w:GetScale() or 1)*100+0.5),true) end
-	if self._radiusControl then self._radiusControl:SetValue(w:GetCornerRadius and w:GetCornerRadius() or 0,true) end
+	if self._radiusControl then self._radiusControl:SetValue(w.GetCornerRadius and w:GetCornerRadius() or 0,true) end
 	if self._densityControl then self._densityControl:SetValue(w.Tokens:GetDensity(),true) end
 	if self._localeControl then self._localeControl:SetOptions(w.Locale:List()); self._localeControl:SetValue(w.Locale:Get(),true) end
 	if self._motionControl then self._motionControl:SetValue(not w.Motion.Enabled,true) end
