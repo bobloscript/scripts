@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.11.1-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.2-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T10:56:46.238Z
+	Built: 2026-08-23T11:08:50.646Z
 	Modules: 63
 ]]
 local __modules = {}
@@ -945,7 +945,7 @@ local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.11.1-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.2-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
 BobloUI.Sources={}
 function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
 function BobloUI.Sources.Players(options)
@@ -964,7 +964,7 @@ local function evict(id)
 	local r=globalRegistry(); local previous=r.Instances[id]; if not previous then return end; r.Instances[id]=nil
 	local ok,err=pcall(function() previous:Unload() end); if not ok then warn(`[BobloUI] previous window "{id}" failed to unload ({err}); sweeping GUIs.`); Layer.SweepOrphans(id) end
 end
-local WINDOW_OPTIONS={"Id","Singleton","Title","Subtitle","Theme","Accent","Density","Scale","Size","MinSize","Locale","ToggleKey","ConfigFolder","AutoLoad","ReducedMotion","HighContrast","Settings","RememberGeometry","KeyboardNavigation","SoundEnabled","SoundVolume","Sounds","OnUnload","SidebarHidden","CornerRadius","FooterHeight","Opacity","BackgroundImage","BackgroundImageTransparency","RestoreButton","TabTransition","WindowAnimation","NotificationPosition","Watermark","KeybindHUD","CustomCursor"}
+local WINDOW_OPTIONS={"Id","Singleton","Title","Subtitle","Theme","Accent","Density","Scale","Size","MinSize","Locale","ToggleKey","ToggleUIKeybind","ShowText","ConfigFolder","AutoLoad","ReducedMotion","HighContrast","Settings","RememberGeometry","KeyboardNavigation","SoundEnabled","SoundVolume","Sounds","OnUnload","SidebarHidden","CornerRadius","FooterHeight","Opacity","BackgroundImage","BackgroundImageTransparency","RestoreButton","TabTransition","WindowAnimation","NotificationPosition","Watermark","KeybindHUD","CustomCursor"}
 local function checkOptions(options)
 	if type(options)~="table" then error("[BobloUI] CreateWindow expects an options table.",3) end
 	if type(options.Title)~="string" then error("[BobloUI] CreateWindow: Title is required and must be a string.",3) end
@@ -1075,8 +1075,22 @@ function BobloUI:CreateWindow(options)
 	commands:Register({Id="ui.reset",Title="Reset UI layout",Keywords={"reset","layout","window"},Callback=function() window:ResetGeometry() end})
 	commands:Register({Id="ui.unload",Title="Unload UI",Keywords={"close","destroy"},Callback=function() window:Unload() end})
 
-	local toggleKey=options.ToggleKey; if toggleKey==nil then toggleKey=Enum.KeyCode.RightShift end
-	if toggleKey~=false and typeof(toggleKey)=="EnumItem" then janitor:Add(input:BindKey("__window_toggle",toggleKey,"Toggle",function() if not unloaded then window:Toggle() end end)) end
+	local toggleKey=options.ToggleUIKeybind
+	if toggleKey==nil then toggleKey=options.ToggleKey end
+	if toggleKey==nil then toggleKey=Enum.KeyCode.RightShift end
+	if type(toggleKey)=="string" then
+		local wanted=string.lower(toggleKey)
+		local resolved=nil
+		for _,candidate in Enum.KeyCode:GetEnumItems() do
+			if string.lower(candidate.Name)==wanted then resolved=candidate; break end
+		end
+		if not resolved then error(`[BobloUI] ToggleUIKeybind/ToggleKey "{toggleKey}" is not a valid Enum.KeyCode.`,2) end
+		toggleKey=resolved
+	end
+	if toggleKey~=false then
+		if typeof(toggleKey)~="EnumItem" or toggleKey.EnumType~=Enum.KeyCode then error("[BobloUI] ToggleUIKeybind/ToggleKey must be a string, Enum.KeyCode, or false.",2) end
+		janitor:Add(input:BindKey("__window_toggle",toggleKey,"Toggle",function() if not unloaded then window:Toggle() end end))
+	end
 	if options.Scale then window:SetScale(options.Scale) end
 	if options.Watermark then window:SetWatermark(options.Watermark) end
 	if options.KeybindHUD then window:SetKeybindHUD(true) end
@@ -5562,9 +5576,12 @@ function Window.new(context, options)
 		_windowAnimation = options.WindowAnimation or {Style="Slide",Duration=0.12,Offset=8},
 		_visibilityToken = 0,
 		_topbarItems = {},
-		_restoreSpec = options.RestoreButton or {},
-			_backgroundImageSource = options.BackgroundImage,
-			_backgroundImageTransparency = options.BackgroundImageTransparency,
+		_restoreSpec = options.RestoreButton,
+		_showText = options.ShowText or ("Show " .. options.Title),
+		_showTextExplicit = options.ShowText ~= nil,
+		_restoreMode = if options.RestoreButton == false then "Never" elseif type(options.RestoreButton)=="table" and options.RestoreButton.Enabled==false then "Never" elseif options.RestoreButton ~= nil then ((type(options.RestoreButton)=="table" and options.RestoreButton.Mode) or "Always") else "Mobile",
+		_backgroundImageSource = options.BackgroundImage,
+		_backgroundImageTransparency = options.BackgroundImageTransparency,
 	}, Window)
 
 	self:_build()
@@ -5579,7 +5596,9 @@ function Window.new(context, options)
 		end
 		if changed.Viewport or changed.Insets then
 			self:_applyGeometry()
+			self:_refreshRestoreButton()
 		end
+		if changed.Class then self:_refreshRestoreButton() end
 	end))
 
 	self._janitor:Add(self.Tokens.Changed:Connect(function()
@@ -5667,14 +5686,16 @@ function Window:_build()
 	self._janitor:Add(self._flash)
 
 	self._restoreButton = New("TextButton", {
-		Name = "Restore", Size = UDim2.fromOffset(44, 44),
-		Position = UDim2.new(0, 14, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundTransparency = 0, BorderSizePixel = 0, AutoButtonColor = false,
-		Text = (self.Title:sub(1, 1):upper()), Font = self.Fonts.Bold, TextSize = 16,
+		Name = "Restore", Size = UDim2.fromOffset(132, 32),
+		Position = UDim2.new(0.5, 0, 0, math.max(12, self.Device.Insets.Top + 10)), AnchorPoint = Vector2.new(0.5, 0),
+		BackgroundTransparency = 0.12, BorderSizePixel = 0, AutoButtonColor = false,
+		Text = self._showText, Font = self.Fonts.Medium, TextSize = self.Tokens:Get("FontSmall"),
 		Visible = false, Parent = self.Layers.Root,
 	})
-	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = self._restoreButton })
-	self:_bind(self._restoreButton, { BackgroundColor3 = "Accent", TextColor3 = "AccentText" })
+	self._restoreCorner = New("UICorner", { CornerRadius = UDim.new(0, self.Tokens:Get("CornerMd")), Parent = self._restoreButton })
+	local restoreStroke=New("UIStroke", {Thickness=1,Transparency=0.55,Parent=self._restoreButton})
+	self:_bind(self._restoreButton, { BackgroundColor3 = "SurfaceRaised", TextColor3 = "Text" })
+	self:_bind(restoreStroke,{Color="Border"})
 	self._janitor:Add(self._restoreButton.MouseButton1Click:Connect(function() self:Show() end))
 	self:SetRestoreButton(self._restoreSpec)
 end
@@ -6375,17 +6396,34 @@ function Window:SetBackgroundImage(image,transparency,surfaceOpacity)
 end
 function Window:SetTabTransition(options) self._tabTransition=options or {Style="None"}; return self end
 function Window:SetWindowAnimation(options) self._windowAnimation=options or {Style="None"}; return self end
-function Window:SetRestoreButton(options)
-	options=options or {}; self._restoreSpec=options; local b=self._restoreButton; if not b then return self end
-	if options.Size then local size=options.Size; if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end end
-	if options.Position and typeof(options.Position)=="UDim2" then b.Position=options.Position end
-	if self._restoreIcon then self._restoreIcon:Destroy(); self._restoreIcon=nil end
-	if options.Icon then b.Text=""; self._restoreIcon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(18,18),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b}); Icon.setColor(self._restoreIcon,self.Theme:Get("AccentText")) else b.Text=tostring(options.Text or self.Title:sub(1,1):upper()) end
-	local c=b:FindFirstChildOfClass("UICorner"); if c then if options.Shape=="Rounded" then c.CornerRadius=UDim.new(0,self.Tokens:Get("CornerMd")) elseif options.Shape=="Square" then c.CornerRadius=UDim.new(0,3) else c.CornerRadius=UDim.new(1,0) end end
-	self._janitor:Remove("restoreDrag")
-	if options.Draggable then local base=b.Position; self._janitor:Add(self.Input:AttachDrag(b,function(delta) b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y) end,function() if self._visible then return false end; base=b.Position; return true end),"Destroy","restoreDrag") end
-	return self
+function Window:_shouldShowRestoreButton()
+	if self._restoreMode=="Never" then return false end
+	if self._restoreMode=="Always" then return true end
+	if self._restoreMode=="Mobile" or self._restoreMode=="Auto" then return self.Device.IsTouch==true end
+	return false
 end
+function Window:_refreshRestoreButton()
+	local b=self._restoreButton; if not b then return end
+	b.Visible=(not self._visible) and self:_shouldShowRestoreButton()
+	if self._restoreMode=="Mobile" and self.Device.IsTouch and not (type(self._restoreSpec)=="table" and self._restoreSpec.Position) then
+		b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0)
+	end
+end
+function Window:SetRestoreButton(options)
+	if options==false then self._restoreSpec=false; self._restoreMode="Never"; self:_refreshRestoreButton(); return self end
+	options=options or {}; self._restoreSpec=options; local b=self._restoreButton; if not b then return self end
+	if options.Enabled==false then self._restoreMode="Never" elseif options.Mode then self._restoreMode=options.Mode elseif next(options)~=nil then self._restoreMode="Always" elseif self._restoreMode==nil then self._restoreMode="Mobile" end
+	local custom=next(options)~=nil
+	if custom and options.Size then local size=options.Size; if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end elseif not custom then b.Size=UDim2.fromOffset(132,32) end
+	if custom and options.Position and typeof(options.Position)=="UDim2" then b.Position=options.Position; b.AnchorPoint=options.AnchorPoint or b.AnchorPoint elseif not custom then b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0) end
+	if self._restoreIcon then self._restoreIcon:Destroy(); self._restoreIcon=nil end
+	if custom and options.Icon then b.Text=""; self._restoreIcon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(18,18),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b}); Icon.setColor(self._restoreIcon,self.Theme:Get("Text")) else b.Text=tostring((custom and options.Text) or self._showText) end
+	local c=self._restoreCorner or b:FindFirstChildOfClass("UICorner"); if c then if custom and options.Shape=="Circle" then c.CornerRadius=UDim.new(1,0) elseif custom and options.Shape=="Square" then c.CornerRadius=UDim.new(0,3) else c.CornerRadius=UDim.new(0,self.Tokens:Get("CornerMd")) end end
+	self._janitor:Remove("restoreDrag")
+	if custom and options.Draggable then local base=b.Position; self._janitor:Add(self.Input:AttachDrag(b,function(delta) b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y) end,function() if self._visible then return false end; base=b.Position; return true end),"Destroy","restoreDrag") end
+	self:_refreshRestoreButton(); return self
+end
+function Window:SetShowText(text) self._showTextExplicit=text~=nil; self._showText=tostring(text or ("Show "..self.Title)); if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end; return self end
 
 function Window:SetLocked(locked) self._locked=locked==true; if self._grip then self._grip.Visible=not self._locked and self._layout~="Drawer" end; if self._footerHint then self._footerHint.Visible=not self._locked and self._layout~="Drawer" end; return self end
 function Window:IsLocked() return self._locked==true end
@@ -6437,8 +6475,8 @@ end
 function Window:Hide()
 	if not self._visible then return self end; self._visibilityToken+=1; local token=self._visibilityToken; self._visible=false; self:CloseDrawer()
 	local root=self._root; local target=root.Position; self._hiddenRestPosition=target; local spec=self._windowAnimation or {}
-	if self._layout~="Drawer" and spec.Style~="None" then local tween=self.Motion:Tween(root,TweenInfo.new(tonumber(spec.Duration) or 0.12,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Position=self:_animatedPosition(target,tonumber(spec.Offset) or 8)}); if tween then tween.Completed:Once(function() if self._visibilityToken==token and not self._visible then root.Visible=false; root.Position=target; if self._restoreButton then self._restoreButton.Visible=true end end end) else root.Visible=false; root.Position=target; if self._restoreButton then self._restoreButton.Visible=true end end
-	else root.Visible=false; if self._restoreButton then self._restoreButton.Visible=true end end
+	if self._layout~="Drawer" and spec.Style~="None" then local tween=self.Motion:Tween(root,TweenInfo.new(tonumber(spec.Duration) or 0.12,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Position=self:_animatedPosition(target,tonumber(spec.Offset) or 8)}); if tween then tween.Completed:Once(function() if self._visibilityToken==token and not self._visible then root.Visible=false; root.Position=target; self:_refreshRestoreButton() end end) else root.Visible=false; root.Position=target; self:_refreshRestoreButton() end
+	else root.Visible=false; self:_refreshRestoreButton() end
 	return self
 end
 
@@ -6453,7 +6491,8 @@ end
 
 function Window:SetTitle(title: string)
 	self.Title = title
-	if self._restoreButton then self._restoreButton.Text=title:sub(1,1):upper() end; if self._brandGlyph then self._brandGlyph.Text=title:sub(1,1):upper() end
+	if self._brandGlyph then self._brandGlyph.Text=title:sub(1,1):upper() end
+	if not self._showTextExplicit then self._showText="Show "..title; if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end end
 	self:_refreshHeaderTitle()
 	return self
 end
