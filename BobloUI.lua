@@ -1,7 +1,7 @@
 --[[
 	BobloUI v0.10.1-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-22T09:23:40.498Z
+	Built: 2026-08-23T09:25:26.866Z
 	Modules: 55
 ]]
 local __modules = {}
@@ -3894,7 +3894,13 @@ function Interactions:OpenMenu(anchor,items)
 end
 function Interactions:Attach(control,root,tooltip,userMenu)
 	local j=Janitor.new("Control.Interactions"); local hoverToken=0; local w=self._window
-	local function tooltipText() local v=type(tooltip)=="function" and tooltip() or tooltip; return v and w.Locale:Resolve(v) or nil end
+	local function tooltipText()
+		local v=type(tooltip)=="function" and tooltip() or tooltip
+		if v==nil then return nil end
+		local kind=type(v)
+		if kind=="function" or kind=="table" or kind=="userdata" or kind=="thread" then return nil end
+		return w.Locale:Resolve(tostring(v))
+	end
 	if tooltip and w.Device.Class~="Phone" then
 		j:Add(root.MouseEnter:Connect(function()
 			hoverToken+=1; local token=hoverToken
@@ -4360,11 +4366,13 @@ function Settings:_syncAppearance()
 	if self._themeControl then self._themeControl:SetOptions(w.Theme:List()); self._themeControl:SetValue(w.Theme:Current(),true) end
 	if self._accentControl then self._accentControl:SetValue(w.Theme:Get("Accent"),true) end
 	if self._scaleControl then self._scaleControl:SetValue(math.floor((w:GetScale() or 1)*100+0.5),true) end
+	if self._radiusControl then self._radiusControl:SetValue(w:GetCornerRadius and w:GetCornerRadius() or 0,true) end
 	if self._densityControl then self._densityControl:SetValue(w.Tokens:GetDensity(),true) end
 	if self._localeControl then self._localeControl:SetOptions(w.Locale:List()); self._localeControl:SetValue(w.Locale:Get(),true) end
 	if self._motionControl then self._motionControl:SetValue(not w.Motion.Enabled,true) end
 	if self._contrastControl then self._contrastControl:SetValue(w.Theme:IsHighContrast(),true) end
 	if self._navigationControl and w.Navigation then self._navigationControl:SetValue(w.Navigation:IsEnabled(),true) end
+	if self._sidebarControl and w.IsSidebarHidden then self._sidebarControl:SetValue(w:IsSidebarHidden(),true) end
 	if self._soundsControl and w.Sound then self._soundsControl:SetValue(w.Sound:IsEnabled(),true) end
 	if self._soundVolumeControl and w.Sound then self._soundVolumeControl:SetValue(math.floor(w.Sound:GetVolume()*100+0.5),true) end
 	for token,control in self._tokenControls do if control and not control._destroyed then control:SetValue(w.Theme:Get(token),true) end end
@@ -4378,6 +4386,7 @@ function Settings:_ensureMounted()
 	self._themeControl=appearance:AddDropdown({Id="__settings.theme",Title="@settings.theme",Options=w.Theme:List(),Default=w.Theme:Current(),IgnoreConfig=true,Callback=function(v) w:SetTheme(v) end})
 	self._accentControl=appearance:AddColorPicker({Id="__settings.accent",Title="@settings.accent",Default=w.Theme:Get("Accent"),IgnoreConfig=true,Callback=function(v) local c=type(v)=="table" and v.Color or v; if typeof(c)=="Color3" then w:SetAccent(c) end end})
 	self._scaleControl=appearance:AddSlider({Id="__settings.scale",Title="@settings.scale",Min=70,Max=140,Step=5,Default=math.floor((w._scale or 1)*100+0.5),Suffix="%",IgnoreConfig=true,Callback=function(v) w:SetScale(v/100) end})
+	self._radiusControl=appearance:AddSlider({Id="__settings.radius",Title="Window corner radius",Min=0,Max=28,Step=1,Default=w.GetCornerRadius and w:GetCornerRadius() or 0,Suffix=" px",IgnoreConfig=true,Callback=function(v) if w.SetCornerRadius then w:SetCornerRadius(v) end end})
 	self._densityControl=appearance:AddDropdown({Id="__settings.density",Title="@settings.density",Options={"Compact","Comfortable","Touch"},Default=w.Tokens:GetDensity(),IgnoreConfig=true,Callback=function(v) w:SetDensity(v) end})
 	self._localeControl=appearance:AddDropdown({Id="__settings.locale",Title="@settings.language",Options=w.Locale:List(),Default=w.Locale:Get(),IgnoreConfig=true,Callback=function(v) w:SetLocale(v) end})
 	self._motionControl=appearance:AddToggle({Id="__settings.motion",Title="@settings.reducedMotion",Default=not w.Motion.Enabled,IgnoreConfig=true,Callback=function(v) w:SetReducedMotion(v) end})
@@ -4395,6 +4404,7 @@ function Settings:_ensureMounted()
 	local windowSec=tab:AddSection({Id="__settings.window",Title="@settings.window",Span="Auto"})
 	windowSec:AddToggle({Id="__settings.lock",Title="@settings.lockWindow",Default=w:IsLocked(),IgnoreConfig=true,Callback=function(v) w:SetLocked(v) end})
 	windowSec:AddToggle({Id="__settings.remember",Title="@settings.rememberGeometry",Default=w:GetRememberGeometry(),IgnoreConfig=true,Callback=function(v) w:SetRememberGeometry(v) end})
+	windowSec:AddToggle({Id="__settings.sidebar",Title="Hide sidebar",Default=w.IsSidebarHidden and w:IsSidebarHidden() or false,IgnoreConfig=true,Callback=function(v) if w.SetSidebarHidden then w:SetSidebarHidden(v) end end})
 	windowSec:AddButton({Title="@settings.resetLayout",Text="@settings.reset",Callback=function() w:ResetGeometry() end})
 	windowSec:AddButton({Title="@settings.resetAll",Text="@settings.reset",Variant="Danger",Confirm="Reset every saved control to its default value?",Callback=function() w:ResetAll() end})
 
@@ -4670,26 +4680,38 @@ local function drawSearchIcon(window, parent)
 end
 
 local function drawThemeIcon(window, parent)
-	local moon = New("Frame", {
-		Size = UDim2.fromOffset(13, 13),
+	local sun = New("Frame", {
+		Size = UDim2.fromOffset(10, 10),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
-	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = moon})
-	local stroke = New("UIStroke", {Thickness = 1.4, Transparency = 0.08, Parent = moon})
+	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = sun})
+	local stroke = New("UIStroke", {Thickness = 1.35, Transparency = 0.06, Parent = sun})
 	window:_bind(stroke, {Color = "TextSecondary"})
-	local mask = New("Frame", {
-		Size = UDim2.fromOffset(10, 10),
-		Position = UDim2.new(0.5, 3, 0.5, -2),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BorderSizePixel = 0,
-		Parent = parent,
-	})
-	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = mask})
-	window:_bind(mask, {BackgroundColor3 = "Canvas"})
+	for _, ray in {
+		{0, -7, 1.5, 4, 0},
+		{0, 7, 1.5, 4, 0},
+		{-7, 0, 4, 1.5, 0},
+		{7, 0, 4, 1.5, 0},
+		{-5, -5, 1.5, 4, 45},
+		{5, -5, 1.5, 4, -45},
+		{-5, 5, 1.5, 4, -45},
+		{5, 5, 1.5, 4, 45},
+	} do
+		local line = New("Frame", {
+			Size = UDim2.fromOffset(ray[3], ray[4]),
+			Position = UDim2.new(0.5, ray[1], 0.5, ray[2]),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Rotation = ray[5],
+			BorderSizePixel = 0,
+			Parent = parent,
+		})
+		New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = line})
+		window:_bind(line, {BackgroundColor3 = "TextSecondary"})
+	end
 end
 
 -- ===================================================================
@@ -4955,7 +4977,6 @@ function Tab:_applySectionLayout(layout)
 	local function heightOf(section)
 		return math.max(1,math.floor((section._root and section._root.AbsoluteSize.Y or 1)+0.5))
 	end
-	local half=if twoColumn then math.max(1,math.floor((available-gap)/2)) else available
 	if not twoColumn then
 		local y=0
 		for _,sec in visible do
@@ -4966,42 +4987,36 @@ function Tab:_applySectionLayout(layout)
 		self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
 		return
 	end
-
-	-- Desktop uses a small masonry layout instead of row pairing. A tall card
-	-- in the left column must not create a matching blank hole under a short
-	-- card on the right. Full-span sections act as synchronization barriers.
-	local y1,y2=0,0
-	local onlyOne=#visible==1
-	local function placeColumn(sec,column)
-		local x=if column==1 then 0 else half+gap
-		local width=if column==1 then half else available-gap-half
-		local y=if column==1 then y1 else y2
-		sec._root.Size=UDim2.fromOffset(width,0)
-		sec._root.Position=UDim2.fromOffset(x,y)
-		local nextY=y+heightOf(sec)+gap
-		if column==1 then y1=nextY else y2=nextY end
-	end
-	local function placeFull(sec)
-		local y=math.max(y1,y2)
-		sec._root.Size=UDim2.fromOffset(available,0)
-		sec._root.Position=UDim2.fromOffset(0,y)
-		local nextY=y+heightOf(sec)+gap
-		y1,y2=nextY,nextY
-	end
-
-	for _,sec in visible do
-		local wantsFull=sec.Span==2 or (sec.Span=="Auto" and onlyOne)
-		if wantsFull then
-			placeFull(sec)
+	local leftWidth=math.max(1,math.floor((available-gap)/2))
+	local rightWidth=math.max(1,available-gap-leftWidth)
+	local y=0
+	local index=1
+	while index<=#visible do
+		local first=visible[index]
+		local firstFull=first.Span==2 or (first.Span=="Auto" and #visible==1)
+		if firstFull then
+			first._root.Size=UDim2.fromOffset(available,0)
+			first._root.Position=UDim2.fromOffset(0,y)
+			y+=heightOf(first)+gap
+			index+=1
 		else
-			-- Respect an explicitly requested legacy column, otherwise fill the
-			-- shorter column. Section.new stores whether Column was explicit.
-			local column
-			if sec._columnExplicit then column=sec.Column else column=if y1<=y2 then 1 else 2 end
-			placeColumn(sec,column)
+			local second=visible[index+1]
+			local secondFull=second and (second.Span==2)
+			first._root.Size=UDim2.fromOffset(leftWidth,0)
+			first._root.Position=UDim2.fromOffset(0,y)
+			local rowHeight=heightOf(first)
+			if second and not secondFull then
+				second._root.Size=UDim2.fromOffset(rightWidth,0)
+				second._root.Position=UDim2.fromOffset(leftWidth+gap,y)
+				rowHeight=math.max(rowHeight,heightOf(second))
+				index+=2
+			else
+				index+=1
+			end
+			y+=rowHeight+gap
 		end
 	end
-	self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,math.max(y1,y2)-gap))
+	self._sectionHost.Size=UDim2.new(1,0,0,math.max(0,y-gap))
 end
 
 function Tab:AddSection(options)
@@ -5173,6 +5188,9 @@ function Window.new(context, options)
 		_themeHandles = {},
 		_groups = {}, _groupSeq = 0,
 		_locked = false, _scale = options.Scale or 1, _rememberGeometry = options.RememberGeometry ~= false,
+		_sidebarHidden = options.SidebarHidden == true,
+		_cornerRadius = options.CornerRadius or context.Tokens:Get("CornerLg"),
+		_footerHeight = options.FooterHeight or 18,
 	}, Window)
 
 	self:_build()
@@ -5243,7 +5261,7 @@ function Window:_build()
 		Parent = self.Layers.Root,
 	})
 	self._janitor:Add(self._root)
-	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerLg")), Parent = self._root })
+	self._rootCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._root })
 	self._rootStroke = New("UIStroke", {
 		Thickness = tokens:Get("Stroke"),
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -5255,6 +5273,7 @@ function Window:_build()
 
 	self:_buildHeader()
 	self:_buildBody()
+	self:_buildFooter()
 	self:_buildResizeGrip()
 
 	-- Covers a theme swap so 2000 instant assignments read as one transition
@@ -5375,6 +5394,35 @@ function Window:_buildHeader()
 	})
 	self:_bind(self._subtitleLabel, { TextColor3 = "TextSecondary" })
 
+	self._sidebarButton = New("TextButton", {
+		Name = "SidebarToggle",
+		Size = UDim2.fromOffset(30, 30),
+		Position = UDim2.new(1, -152, 0.5, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundTransparency = 0.82,
+		AutoButtonColor = false,
+		Text = "",
+		Parent = self._header,
+	})
+	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerSm")), Parent = self._sidebarButton })
+	self:_bind(self._sidebarButton, { BackgroundColor3 = "ControlHover" })
+	local sidebarIcon = Icon.new(self, "menu", {
+		Size = UDim2.fromOffset(16, 16),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Parent = self._sidebarButton,
+	})
+	Icon.setColor(sidebarIcon, self.Theme:Get("TextSecondary"))
+	self._janitor:Add(self._sidebarButton.MouseEnter:Connect(function() self._sidebarButton.BackgroundTransparency=0.48 end))
+	self._janitor:Add(self._sidebarButton.MouseLeave:Connect(function() self._sidebarButton.BackgroundTransparency=0.82 end))
+	self._janitor:Add(self._sidebarButton.MouseButton1Click:Connect(function()
+		if self._layout == "Drawer" then
+			self:OpenDrawer()
+		else
+			self:ToggleSidebar()
+		end
+	end))
+
 	self._searchButton = New("TextButton", {
 		Name = "Search",
 		Size = UDim2.fromOffset(30, 30),
@@ -5473,7 +5521,7 @@ function Window:_buildBody()
 
 	self._body = New("Frame", {
 		Name = "Body",
-		Size = UDim2.new(1, 0, 1, -tokens:Get("HeaderHeight")),
+		Size = UDim2.new(1, 0, 1, -(tokens:Get("HeaderHeight") + self._footerHeight)),
 		Position = UDim2.new(0, 0, 0, tokens:Get("HeaderHeight")),
 		BackgroundTransparency = 1,
 		Parent = self._root,
@@ -5525,18 +5573,62 @@ function Window:_buildBody()
 	self._janitor:Add(self._content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:_scheduleSectionLayouts() end))
 end
 
+function Window:_buildFooter()
+	self._footer = New("Frame", {
+		Name = "Footer",
+		Size = UDim2.new(1, 0, 0, self._footerHeight),
+		Position = UDim2.new(0, 0, 1, -self._footerHeight),
+		BorderSizePixel = 0,
+		Parent = self._root,
+	})
+	self:_bind(self._footer, { BackgroundColor3 = "Canvas" })
+	self._footerLine = New("Frame", {
+		Name = "Divider",
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 0, 0),
+		BorderSizePixel = 0,
+		Parent = self._footer,
+	})
+	self._footerLine.BackgroundTransparency = 0.45
+	self:_bind(self._footerLine, { BackgroundColor3 = "BorderSubtle" })
+	self._footerHint = New("TextLabel", {
+		Name = "ResizeHint",
+		Size = UDim2.new(1, -62, 1, 0),
+		Position = UDim2.fromOffset(12, 0),
+		BackgroundTransparency = 1,
+		Font = self.Fonts.Regular,
+		TextSize = self.Tokens:Get("FontCaption"),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "Drag corner to resize",
+		Parent = self._footer,
+	})
+	self:_bind(self._footerHint, { TextColor3 = "TextTertiary" })
+end
+
 function Window:_buildResizeGrip()
 	self._grip = New("TextButton", {
 		Name = "ResizeGrip",
-		Size = UDim2.fromOffset(18, 18),
-		Position = UDim2.new(1, 0, 1, 0),
-		AnchorPoint = Vector2.new(1, 1),
+		Size = UDim2.fromOffset(52, self._footerHeight),
+		Position = UDim2.new(1, -4, 0.5, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
 		Text = "",
 		ZIndex = 5,
-		Parent = self._root,
+		Parent = self._footer,
 	})
+	for index = 0, 2 do
+		local bar = New("Frame", {
+			Size = UDim2.fromOffset(8 + index * 2, 1.5),
+			Position = UDim2.new(1, -(12 + index * 4), 1, -(5 + index * 4)),
+			AnchorPoint = Vector2.new(1, 1),
+			Rotation = -45,
+			BorderSizePixel = 0,
+			Parent = self._grip,
+		})
+		New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = bar })
+		self:_bind(bar, { BackgroundColor3 = "TextSecondary" })
+	end
 
 	self._janitor:Add(self._grip.InputBegan:Connect(function(input)
 		if self._layout == "Drawer" or self._locked then return end
@@ -5601,8 +5693,10 @@ function Window:_applyLayout(layout: string, initial: boolean?)
 	local railMode = layout == "Rail"
 
 	self._navToggle.Visible = drawerMode
+	self._sidebarButton.Visible = true
 	self._grip.Visible = not drawerMode and not self._locked
-	self._navPanel.Visible = not drawerMode
+	if self._footer then self._footer.Visible = not drawerMode end
+	self._navPanel.Visible = not drawerMode and not self._sidebarHidden
 	self._subtitleLabel.Visible = self.Subtitle ~= nil and not drawerMode
 
 	if self._navList.Parent ~= self._navPanel then
@@ -5612,8 +5706,8 @@ function Window:_applyLayout(layout: string, initial: boolean?)
 	self:_refreshGroups()
 	for _, tab in self._tabs do
 		tab:_applySectionLayout(layout)
-		tab._label.Visible = not railMode
-		if tab._badge then tab._badge.Visible = not railMode end
+		tab._label.Visible = not railMode and not self._sidebarHidden
+		if tab._badge then tab._badge.Visible = not railMode and not self._sidebarHidden end
 		tab._avatar.Position = if railMode
 			then UDim2.fromScale(0.5, 0.5)
 			else UDim2.new(0, 9, 0.5, 0)
@@ -5633,21 +5727,27 @@ function Window:_applyTokens()
 	local drawerMode = layout == "Drawer"
 	local railMode = layout == "Rail"
 
-	local navWidth = if railMode then tokens:Get("RailWidth") else tokens:Get("SidebarWidth")
+	local navWidth = if self._sidebarHidden and not drawerMode then 0 elseif railMode then tokens:Get("RailWidth") else tokens:Get("SidebarWidth")
 	local headerHeight = tokens:Get("HeaderHeight")
 
 	self._header.Size = UDim2.new(1, 0, 0, headerHeight)
-	self._body.Size = UDim2.new(1, 0, 1, -headerHeight)
+	self._body.Size = UDim2.new(1, 0, 1, -(headerHeight + self._footerHeight))
 	self._body.Position = UDim2.new(0, 0, 0, headerHeight)
+	if self._footer then
+		self._footer.Size = UDim2.new(1, 0, 0, self._footerHeight)
+		self._footer.Position = UDim2.new(0, 0, 1, -self._footerHeight)
+	end
+	if self._rootCorner then self._rootCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
 
 	self._titleLabel.TextSize = tokens:Get("FontTitle")
 	self._subtitleLabel.TextSize = tokens:Get("FontSmall")
+	if self._footerHint then self._footerHint.TextSize = tokens:Get("FontCaption") end
 	self._rootStroke.Thickness = tokens:Get("Stroke")
 
 	local titleLeft = if drawerMode then 48 else 52
 	self._brandMark.Visible = not drawerMode
 	self._titleLabel.Position = UDim2.new(0, titleLeft, 0, if self._subtitleLabel.Visible then 9 else 0)
-	self._titleLabel.Size = UDim2.new(1, -titleLeft - 148, 0, if self._subtitleLabel.Visible then 20 else headerHeight)
+	self._titleLabel.Size = UDim2.new(1, -titleLeft - 184, 0, if self._subtitleLabel.Visible then 20 else headerHeight)
 	self._subtitleLabel.Position = UDim2.new(0, titleLeft, 0, 29)
 
 	if drawerMode then
@@ -5837,10 +5937,22 @@ function Window:_selectFirstVisible()
 	end
 end
 
-function Window:SetLocked(locked) self._locked=locked==true; if self._grip then self._grip.Visible=not self._locked and self._layout~="Drawer" end; return self end
+function Window:SetLocked(locked) self._locked=locked==true; if self._grip then self._grip.Visible=not self._locked and self._layout~="Drawer" end; if self._footerHint then self._footerHint.Visible=not self._locked and self._layout~="Drawer" end; return self end
 function Window:IsLocked() return self._locked==true end
 function Window:SetRememberGeometry(enabled) self._rememberGeometry=enabled~=false; return self end
 function Window:GetRememberGeometry() return self._rememberGeometry end
+function Window:SetSidebarHidden(hidden) self._sidebarHidden=hidden==true; self:_applyLayout(self._layout,true); return self end
+function Window:IsSidebarHidden() return self._sidebarHidden==true end
+function Window:ToggleSidebar() return self:SetSidebarHidden(not self._sidebarHidden) end
+function Window:SetCornerRadius(radius)
+	if type(radius)=="boolean" then radius = if radius then self.Tokens:Get("CornerLg") else 0 end
+	if type(radius)~="number" then error("[BobloUI] Window:SetCornerRadius expects number.",2) end
+	self._cornerRadius = math.max(0, math.floor(radius + 0.5))
+	if self._rootCorner then self._rootCorner.CornerRadius = UDim.new(0, self._cornerRadius) end
+	return self
+end
+function Window:SetRounded(enabled) return self:SetCornerRadius(enabled and self.Tokens:Get("CornerLg") or 0) end
+function Window:GetCornerRadius() return self._cornerRadius end
 function Window:SetSize(size)
 	if typeof(size)=="Vector2" then size=UDim2.fromOffset(size.X,size.Y) end
 	if typeof(size)~="UDim2" then error("[BobloUI] Window:SetSize expects UDim2 or Vector2.",2) end
