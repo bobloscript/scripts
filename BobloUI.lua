@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.11.3-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.4-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T11:20:40.164Z
+	Built: 2026-08-25T03:56:06.605Z
 	Modules: 63
 ]]
 local __modules = {}
@@ -945,7 +945,7 @@ local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.11.3-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.4-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
 BobloUI.Sources={}
 function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
 function BobloUI.Sources.Players(options)
@@ -5037,7 +5037,8 @@ local function drawSearchIcon(window, parent)
 end
 
 local function drawThemeIcon(window, parent)
-	local sun = New("Frame", {
+	-- Tailwind-like theme glyph: a compact sun with a small crescent cutout.
+	local core = New("Frame", {
 		Size = UDim2.fromOffset(10, 10),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -5045,18 +5046,18 @@ local function drawThemeIcon(window, parent)
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
-	New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = sun})
-	local stroke = New("UIStroke", {Thickness = 1.35, Transparency = 0.06, Parent = sun})
-	window:_bind(stroke, {Color = "TextSecondary"})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = core })
+	local coreStroke = New("UIStroke", { Thickness = 1.35, Transparency = 0.04, Parent = core })
+	window:_bind(coreStroke, { Color = "TextSecondary" })
 	for _, ray in {
-		{0, -7, 1.5, 4, 0},
-		{0, 7, 1.5, 4, 0},
-		{-7, 0, 4, 1.5, 0},
-		{7, 0, 4, 1.5, 0},
-		{-5, -5, 1.5, 4, 45},
-		{5, -5, 1.5, 4, -45},
-		{-5, 5, 1.5, 4, -45},
-		{5, 5, 1.5, 4, 45},
+		{0, -8, 1.5, 3.5, 0},
+		{0, 8, 1.5, 3.5, 0},
+		{-8, 0, 3.5, 1.5, 0},
+		{8, 0, 3.5, 1.5, 0},
+		{-5.5, -5.5, 1.5, 3.5, 45},
+		{5.5, -5.5, 1.5, 3.5, -45},
+		{-5.5, 5.5, 1.5, 3.5, -45},
+		{5.5, 5.5, 1.5, 3.5, 45},
 	} do
 		local line = New("Frame", {
 			Size = UDim2.fromOffset(ray[3], ray[4]),
@@ -5066,9 +5067,20 @@ local function drawThemeIcon(window, parent)
 			BorderSizePixel = 0,
 			Parent = parent,
 		})
-		New("UICorner", {CornerRadius = UDim.new(1, 0), Parent = line})
-		window:_bind(line, {BackgroundColor3 = "TextSecondary"})
+		New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = line })
+		window:_bind(line, { BackgroundColor3 = "TextSecondary" })
 	end
+	local cutout = New("Frame", {
+		Size = UDim2.fromOffset(6, 6),
+		Position = UDim2.new(0.5, 3, 0.5, -3),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = parent,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = cutout })
+	window:_bind(cutout, { BackgroundColor3 = "Canvas" })
+end
 end
 
 -- ===================================================================
@@ -5709,7 +5721,6 @@ function Window:_buildHeader()
 		BorderSizePixel = 0,
 		Parent = self._root,
 	})
-	self._headerCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._header })
 	self:_bind(self._header, { BackgroundColor3 = "Canvas" })
 
 	self._headerLine = New("Frame", {
@@ -5984,7 +5995,6 @@ function Window:_buildFooter()
 		BorderSizePixel = 0,
 		Parent = self._root,
 	})
-	self._footerCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._footer })
 	self:_bind(self._footer, { BackgroundColor3 = "Canvas" })
 	self._footerLine = New("Frame", {
 		Name = "Divider",
@@ -6406,22 +6416,49 @@ end
 function Window:_refreshRestoreButton()
 	local b=self._restoreButton; if not b then return end
 	b.Visible=(not self._visible) and self:_shouldShowRestoreButton()
-	if self._restoreMode=="Mobile" and self.Device.IsTouch and not (type(self._restoreSpec)=="table" and self._restoreSpec.Position) then
-		b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0)
-	end
 end
 function Window:SetRestoreButton(options)
 	if options==false then self._restoreSpec=false; self._restoreMode="Never"; self:_refreshRestoreButton(); return self end
 	options=options or {}; self._restoreSpec=options; local b=self._restoreButton; if not b then return self end
 	if options.Enabled==false then self._restoreMode="Never" elseif options.Mode then self._restoreMode=options.Mode elseif next(options)~=nil then self._restoreMode="Always" elseif self._restoreMode==nil then self._restoreMode="Always" end
 	local custom=next(options)~=nil
-	if custom and options.Size then local size=options.Size; if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end elseif not custom then b.Size=UDim2.fromOffset(132,32) end
-	if custom and options.Position and typeof(options.Position)=="UDim2" then b.Position=options.Position; b.AnchorPoint=options.AnchorPoint or b.AnchorPoint elseif not custom then b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0) end
+	if custom and options.Size then
+		local size=options.Size
+		if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end
+	elseif not custom then
+		b.Size=UDim2.fromOffset(132,32)
+	end
+	if custom and options.Position and typeof(options.Position)=="UDim2" then
+		b.Position=options.Position; b.AnchorPoint=options.AnchorPoint or b.AnchorPoint
+	elseif not custom then
+		b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0)
+	end
 	if self._restoreIcon then self._restoreIcon:Destroy(); self._restoreIcon=nil end
-	if custom and options.Icon then b.Text=""; self._restoreIcon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(18,18),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b}); Icon.setColor(self._restoreIcon,self.Theme:Get("Text")) else b.Text=tostring((custom and options.Text) or self._showText) end
-	local c=self._restoreCorner or b:FindFirstChildOfClass("UICorner"); if c then if custom and options.Shape=="Circle" then c.CornerRadius=UDim.new(1,0) elseif custom and options.Shape=="Square" then c.CornerRadius=UDim.new(0,3) else c.CornerRadius=UDim.new(0,self.Tokens:Get("CornerMd")) end end
+	if custom and options.Icon then
+		b.Text=""
+		self._restoreIcon=Icon.new(self,options.Icon,{Size=UDim2.fromOffset(18,18),Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),Parent=b})
+		Icon.setColor(self._restoreIcon,self.Theme:Get("Text"))
+	else
+		b.Text=tostring((custom and options.Text) or self._showText)
+	end
+	local c=self._restoreCorner or b:FindFirstChildOfClass("UICorner")
+	if c then
+		if custom and options.Shape=="Circle" then c.CornerRadius=UDim.new(1,0)
+		elseif custom and options.Shape=="Square" then c.CornerRadius=UDim.new(0,3)
+		else c.CornerRadius=UDim.new(0,self.Tokens:Get("CornerMd")) end
+	end
 	self._janitor:Remove("restoreDrag")
-	if custom and options.Draggable then local base=b.Position; self._janitor:Add(self.Input:AttachDrag(b,function(delta) b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y) end,function() if self._visible then return false end; base=b.Position; return true end),"Destroy","restoreDrag") end
+	local allowDrag = (not custom and true) or options.Draggable ~= false
+	if allowDrag then
+		local base=b.Position
+		self._janitor:Add(self.Input:AttachDrag(b,function(delta)
+			b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y)
+		end,function()
+			if self._visible then return false end
+			base=b.Position
+			return true
+		end),"Destroy","restoreDrag")
+	end
 	self:_refreshRestoreButton(); return self
 end
 function Window:SetShowText(text) self._showTextExplicit=text~=nil; self._showText=tostring(text or "Show BobloUI"); if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end; return self end
@@ -6439,8 +6476,6 @@ function Window:SetCornerRadius(radius)
 	self._cornerRadius = math.max(0, math.floor(radius + 0.5))
 	local value=UDim.new(0,self._cornerRadius)
 	if self._rootCorner then self._rootCorner.CornerRadius = value end
-	if self._headerCorner then self._headerCorner.CornerRadius = value end
-	if self._footerCorner then self._footerCorner.CornerRadius = value end
 	return self
 end
 function Window:SetRounded(enabled) return self:SetCornerRadius(enabled and self.Tokens:Get("CornerLg") or 0) end
