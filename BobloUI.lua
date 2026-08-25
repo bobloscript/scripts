@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.11.4-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T03:56:06.605Z
+	Built: 2026-08-25T03:58:42.654Z
 	Modules: 63
 ]]
 local __modules = {}
@@ -945,7 +945,7 @@ local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.11.4-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.5-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
 BobloUI.Sources={}
 function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
 function BobloUI.Sources.Players(options)
@@ -5080,7 +5080,6 @@ local function drawThemeIcon(window, parent)
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = cutout })
 	window:_bind(cutout, { BackgroundColor3 = "Canvas" })
-end
 end
 
 -- ===================================================================
