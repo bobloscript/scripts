@@ -1,7 +1,7 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T07:40:04.544Z
+	Built: 2026-08-25T08:02:18.682Z
 	Modules: 67
 
 THIRD-PARTY LICENSE NOTICES
@@ -6085,8 +6085,9 @@ end
 __modules["primitives/Icon"] = function()
 --!nonstrict
 -- BobloUI icon primitive.
--- Lucide sprites are the primary renderer. The older GuiObject glyphs remain
--- below as a network/asset-independent fallback for unknown names.
+-- Lucide sprites are the primary renderer when the executor can cache GitHub
+-- PNGs as local custom assets. GuiObject glyphs remain the mandatory asset-free
+-- fallback, so missing HTTP/filesystem capabilities never break the UI.
 local Create = __require("runtime/Create")
 local Lucide = __require("primitives/Lucide")
 
@@ -6102,6 +6103,41 @@ local Icon = {
 		shop = "shopping-cart",
 		game = "gamepad-2",
 		magic = "wand-sparkles",
+	},
+	FallbackAliases = {
+		accessibility = "settings",
+		["app-window"] = "panel",
+		["audio-lines"] = "controls",
+		blend = "palette",
+		["chevron-down"] = "chevron_down",
+		["chevron-right"] = "chevron_right",
+		["chevron-up"] = "chevron_up",
+		["circle-check"] = "check",
+		["circle-question-mark"] = "info",
+		["circle-x"] = "close",
+		["file-pen"] = "edit",
+		["folder-cog"] = "folder",
+		["folder-open"] = "folder",
+		languages = "globe",
+		["layout-template"] = "layout",
+		["list-check"] = "list",
+		["loader-circle"] = "progress",
+		["mouse-pointer-2"] = "controls",
+		paintbrush = "palette",
+		["panel-left"] = "panel",
+		pipette = "palette",
+		["rotate-ccw"] = "reset",
+		["rows-3"] = "list",
+		["settings-2"] = "settings",
+		["square-round-corner"] = "panel",
+		["sun-medium"] = "moon",
+		["sun-moon"] = "moon",
+		["swatch-book"] = "palette",
+		["text-cursor-input"] = "edit",
+		["triangle-alert"] = "info",
+		["volume-2"] = "controls",
+		x = "close",
+		["zoom-in"] = "plus",
 	},
 	Count = Lucide.Count,
 	Source = Lucide.Source,
@@ -6130,6 +6166,26 @@ end
 
 function Icon.SetSpritesheets(first, second)
 	return Lucide.SetSpritesheets(first, second)
+end
+
+function Icon.SetAtlasUrls(first, second)
+	return Lucide.SetAtlasUrls(first, second)
+end
+
+function Icon.GetAtlasUrls()
+	return Lucide.GetAtlasUrls()
+end
+
+function Icon.Prepare()
+	return Lucide.Prepare()
+end
+
+function Icon.Retry()
+	return Lucide.Retry()
+end
+
+function Icon.GetStatus()
+	return Lucide.GetStatus()
 end
 
 function Icon.GetSpritesheets()
@@ -6958,7 +7014,13 @@ function Icon.new(window, name, props)
 	if asset then
 		return createImage(window, asset, asset.IconName, props)
 	end
-	local drawer = Draw[name] or Draw[normalized] or Draw[underscored]
+	local fallbackName = Icon.FallbackAliases[normalized] or normalized
+	local fallbackUnderscored = type(fallbackName) == "string" and string.gsub(fallbackName, "-", "_") or fallbackName
+	local drawer = Draw[name]
+		or Draw[normalized]
+		or Draw[underscored]
+		or Draw[fallbackName]
+		or Draw[fallbackUnderscored]
 	if drawer then
 		local root = Create.New("Frame", copyLayoutProps(props))
 		root:SetAttribute("BobloIconName", normalized)
@@ -6987,14 +7049,24 @@ __modules["primitives/Lucide"] = function()
 -- Lucide: ISC; Roblox atlas implementation: MIT.
 -- Full notices live in vendor/lucide/ and are copied into dist notices.
 --
--- The upstream downloader was intentionally removed. Loading BobloUI must not
--- write executor files or execute code/data from a third-party repository.
+-- The upstream code downloader was intentionally removed. BobloUI only fetches
+-- the two pinned PNG atlases from its own GitHub repository, then exposes them
+-- through an executor-local custom asset when that capability exists.
 
+local Env = __require("runtime/Env")
 local Lucide = {}
 
-local DEFAULT_SHEETS = {
-	"rbxassetid://122605056588923",
-	"rbxassetid://87013611700945",
+local DEFAULT_URLS = {
+	"https://raw.githubusercontent.com/bobloscript/scripts/main/assets/bobloui/lucide-1.png",
+	"https://raw.githubusercontent.com/bobloscript/scripts/main/assets/bobloui/lucide-2.png",
+}
+local CACHE = {
+	"BobloUI/assets/lucide-e8b0019-1.png",
+	"BobloUI/assets/lucide-e8b0019-2.png",
+}
+local EXPECTED = {
+	{ Bytes = 484530, Width = 1024, Height = 1024 },
+	{ Bytes = 53088, Width = 512, Height = 512 },
 }
 
 local icons = {
@@ -8756,7 +8828,7 @@ local icons = {
 		"arrow-right",
 		"archive-restore",
 	},
-	{ DEFAULT_SHEETS[1], DEFAULT_SHEETS[2] },
+	{ "", "" },
 	{
 		[48] = {
 			{ 1, { 24, 24 }, { 150, 25 } },
@@ -10531,25 +10603,151 @@ Lucide.Icons = iconIndices
 Lucide.Count = #iconIndices
 Lucide.Source = "lucide-roblox-direct@e8b0019"
 
-local function normalizeAsset(value)
-	if type(value) == "number" then
-		return `rbxassetid://{value}`
+local atlasUrls = table.clone(DEFAULT_URLS)
+local status = "Idle"
+local lastError = nil
+local provider = "GitHubLocal"
+local warned = false
+local bypassCache = false
+
+local function uint32(data, offset)
+	local a, b, c, d = string.byte(data, offset, offset + 3)
+	if not d then
+		return nil
 	end
-	if type(value) ~= "string" or value == "" then
-		error("[BobloUI] Icon.SetSpritesheets expects two Roblox asset IDs or asset strings.", 3)
+	return a * 16777216 + b * 65536 + c * 256 + d
+end
+
+local function validatePng(data, index)
+	local expected = EXPECTED[index]
+	if type(data) ~= "string" or #data ~= expected.Bytes then
+		return false
 	end
-	if string.match(value, "^%d+$") then
-		return "rbxassetid://" .. value
+	if string.sub(data, 1, 8) ~= "\137PNG\r\n\26\n" or string.sub(data, 13, 16) ~= "IHDR" then
+		return false
 	end
-	if not string.find(value, "rbxasset://", 1, true) and not string.find(value, "rbxassetid://", 1, true) then
-		error("[BobloUI] icon spritesheets must use rbxasset:// or rbxassetid://.", 3)
+	return uint32(data, 17) == expected.Width and uint32(data, 21) == expected.Height
+end
+
+local function fallback(message)
+	status = "Fallback"
+	lastError = message
+	if not warned then
+		warn(`[BobloUI] Lucide atlas unavailable ({message}); using asset-free fallback icons.`)
+		warned = true
 	end
-	return value
+	return false
+end
+
+local function ensureCacheFolders()
+	if not Env.FS then
+		return false
+	end
+	for _, folder in { "BobloUI", "BobloUI/assets" } do
+		if not Env.FS.IsFolder(folder) and not Env.FS.MakeFolder(folder) then
+			return false
+		end
+	end
+	return true
+end
+
+local function loadSheet(index)
+	local path = CACHE[index]
+	local contents = if not bypassCache and Env.FS.IsFile(path) then Env.FS.Read(path) else nil
+	if not validatePng(contents, index) then
+		local downloaded, httpError = Env.HttpGet(atlasUrls[index])
+		if not validatePng(downloaded, index) then
+			return nil, httpError or "downloaded atlas failed PNG validation"
+		end
+		if not Env.FS.Write(path, downloaded) then
+			return nil, "cannot write the atlas cache"
+		end
+	end
+	local asset = Env.GetCustomAsset(path)
+	if not asset then
+		return nil, "custom asset registration failed"
+	end
+	return asset, nil
+end
+
+function Lucide.Prepare(force)
+	if status == "Ready" and not force then
+		return true
+	end
+	if status == "Fallback" and not force then
+		return false
+	end
+	if status == "Preparing" then
+		return false
+	end
+	if force then
+		idIndices[1], idIndices[2] = "", ""
+		status = "Idle"
+		lastError = nil
+		warned = false
+	end
+	if not Env.FS or not Env.Capabilities.CustomAsset then
+		return fallback("executor has no filesystem/custom-asset API")
+	end
+	if not ensureCacheFolders() then
+		return fallback("cannot create the atlas cache folder")
+	end
+
+	status = "Preparing"
+	for index = 1, 2 do
+		local asset, loadError = loadSheet(index)
+		if not asset then
+			idIndices[1], idIndices[2] = "", ""
+			return fallback(`sheet {index}: {loadError or "unknown error"}`)
+		end
+		idIndices[index] = asset
+	end
+	status = "Ready"
+	lastError = nil
+	provider = "GitHubLocal"
+	bypassCache = false
+	return true
+end
+
+function Lucide.Retry()
+	return Lucide.Prepare(true)
+end
+
+local function clearCache()
+	if not Env.FS then
+		return
+	end
+	for _, path in CACHE do
+		if Env.FS.IsFile(path) then
+			Env.FS.Delete(path)
+		end
+	end
+end
+
+function Lucide.SetAtlasUrls(first, second)
+	for index, value in { first, second } do
+		if type(value) ~= "string" or not string.match(value, "^https://") then
+			error(`[BobloUI] Icon.SetAtlasUrls argument {index} must be an HTTPS URL.`, 2)
+		end
+	end
+	atlasUrls[1], atlasUrls[2] = first, second
+	bypassCache = true
+	clearCache()
+	return Lucide.Retry()
+end
+
+function Lucide.GetAtlasUrls()
+	return { atlasUrls[1], atlasUrls[2] }
 end
 
 function Lucide.SetSpritesheets(first, second)
-	idIndices[1] = normalizeAsset(first)
-	idIndices[2] = normalizeAsset(second)
+	if type(first) ~= "string" or first == "" or type(second) ~= "string" or second == "" then
+		error("[BobloUI] Icon.SetSpritesheets expects two custom asset strings.", 2)
+	end
+	idIndices[1], idIndices[2] = first, second
+	status = "Ready"
+	lastError = nil
+	provider = "Manual"
 	return Lucide.GetSpritesheets()
 end
 
@@ -10558,9 +10756,22 @@ function Lucide.GetSpritesheets()
 end
 
 function Lucide.ResetSpritesheets()
-	idIndices[1] = DEFAULT_SHEETS[1]
-	idIndices[2] = DEFAULT_SHEETS[2]
+	atlasUrls[1], atlasUrls[2] = DEFAULT_URLS[1], DEFAULT_URLS[2]
+	provider = "GitHubLocal"
+	bypassCache = true
+	clearCache()
+	Lucide.Prepare(true)
 	return Lucide.GetSpritesheets()
+end
+
+function Lucide.GetStatus()
+	return {
+		State = status,
+		Provider = provider,
+		Error = lastError,
+		Urls = Lucide.GetAtlasUrls(),
+		Ready = status == "Ready",
+	}
 end
 
 function Lucide.Has(name)
@@ -10573,6 +10784,9 @@ function Lucide.GetAsset(name: string)
 	local iconIndex = nameToIndex[name]
 
 	if not iconIndex then
+		return nil
+	end
+	if not Lucide.Prepare() then
 		return nil
 	end
 
@@ -10999,6 +11213,7 @@ __modules["runtime/Env"] = function()
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 
 local Env = {}
 
@@ -11112,6 +11327,75 @@ Env.FS = if hasFilesystem
 
 -- ===== clipboard / http ===========================================
 
+local requestFunction = tryGlobal("request") or tryGlobal("http_request") or tryGlobal("httprequest")
+if not requestFunction then
+	local syn = tryGlobal("syn")
+	if type(syn) == "table" then
+		requestFunction = syn.request
+	end
+end
+if not requestFunction then
+	local http = tryGlobal("http")
+	if type(http) == "table" then
+		requestFunction = http.request
+	end
+end
+
+local customAsset = tryGlobal("getcustomasset") or tryGlobal("getsynasset")
+if not customAsset then
+	local syn = tryGlobal("syn")
+	if type(syn) == "table" then
+		customAsset = syn.getcustomasset or syn.get_custom_asset
+	end
+end
+
+function Env.HttpGet(url: string): (string?, string?)
+	if type(requestFunction) == "function" then
+		local ok, response = pcall(requestFunction, {
+			Url = url,
+			Method = "GET",
+			Headers = {
+				["Cache-Control"] = "no-cache",
+			},
+		})
+		if ok and type(response) == "table" then
+			local status = tonumber(response.StatusCode or response.Status)
+			local body = response.Body or response.body
+			if type(body) == "string" and (status == nil or (status >= 200 and status < 300)) then
+				return body, nil
+			end
+			return nil, `HTTP {status or "request failed"}`
+		end
+	end
+
+	local ok, body = pcall(function()
+		return game:HttpGet(url, true)
+	end)
+	if ok and type(body) == "string" then
+		return body, nil
+	end
+
+	local studioOk, studioBody = pcall(function()
+		return HttpService:GetAsync(url, true)
+	end)
+	if studioOk and type(studioBody) == "string" then
+		return studioBody, nil
+	end
+	local reason = if not studioOk then studioBody else body
+	return nil, tostring(reason or "HTTP request failed")
+end
+
+function Env.GetCustomAsset(path: string): string?
+	if type(customAsset) ~= "function" then
+		return nil
+	end
+	local ok, result = pcall(customAsset, path)
+	if not ok or type(result) ~= "string" or result == "" then
+		return nil
+	end
+	return result
+end
+
 local setclipboard = tryGlobal("setclipboard") or tryGlobal("toclipboard")
 local getclipboard = tryGlobal("getclipboard") or tryGlobal("fromclipboard")
 
@@ -11192,6 +11476,8 @@ end
 
 Env.Capabilities = {
 	Filesystem = Env.FS ~= nil,
+	Http = requestFunction ~= nil or not Env.IsStudio,
+	CustomAsset = customAsset ~= nil,
 	HiddenUI = gethui ~= nil,
 	ProtectGui = protectGui ~= nil,
 	Clipboard = setclipboard ~= nil,
