@@ -1,7 +1,7 @@
 --[[
-	BobloUI v0.11.2-beta.1 - generated bundle, do not edit.
+	BobloUI v0.11.3-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-23T11:08:50.646Z
+	Built: 2026-08-23T11:20:40.164Z
 	Modules: 63
 ]]
 local __modules = {}
@@ -945,7 +945,7 @@ local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 
 local BobloUI={}
-BobloUI.Version="0.11.2-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
+BobloUI.Version="0.11.3-beta.1"; BobloUI.ApiLevel=11; BobloUI.Env=Env; BobloUI.Icon=Icon
 BobloUI.Sources={}
 function BobloUI.Source(getter,signals) if type(getter)~="function" then error("[BobloUI] Source requires a getter function.",2) end; return {Get=getter,Signals=signals or {}} end
 function BobloUI.Sources.Players(options)
@@ -5577,9 +5577,9 @@ function Window.new(context, options)
 		_visibilityToken = 0,
 		_topbarItems = {},
 		_restoreSpec = options.RestoreButton,
-		_showText = options.ShowText or ("Show " .. options.Title),
+		_showText = options.ShowText or "Show BobloUI",
 		_showTextExplicit = options.ShowText ~= nil,
-		_restoreMode = if options.RestoreButton == false then "Never" elseif type(options.RestoreButton)=="table" and options.RestoreButton.Enabled==false then "Never" elseif options.RestoreButton ~= nil then ((type(options.RestoreButton)=="table" and options.RestoreButton.Mode) or "Always") else "Mobile",
+		_restoreMode = if options.RestoreButton == false then "Never" elseif type(options.RestoreButton)=="table" and options.RestoreButton.Enabled==false then "Never" elseif options.RestoreButton ~= nil then ((type(options.RestoreButton)=="table" and options.RestoreButton.Mode) or "Always") else "Always",
 		_backgroundImageSource = options.BackgroundImage,
 		_backgroundImageTransparency = options.BackgroundImageTransparency,
 	}, Window)
@@ -5690,7 +5690,7 @@ function Window:_build()
 		Position = UDim2.new(0.5, 0, 0, math.max(12, self.Device.Insets.Top + 10)), AnchorPoint = Vector2.new(0.5, 0),
 		BackgroundTransparency = 0.12, BorderSizePixel = 0, AutoButtonColor = false,
 		Text = self._showText, Font = self.Fonts.Medium, TextSize = self.Tokens:Get("FontSmall"),
-		Visible = false, Parent = self.Layers.Root,
+		Visible = false, ZIndex = 1000, Parent = self.Layers.Toast,
 	})
 	self._restoreCorner = New("UICorner", { CornerRadius = UDim.new(0, self.Tokens:Get("CornerMd")), Parent = self._restoreButton })
 	local restoreStroke=New("UIStroke", {Thickness=1,Transparency=0.55,Parent=self._restoreButton})
@@ -6399,7 +6399,8 @@ function Window:SetWindowAnimation(options) self._windowAnimation=options or {St
 function Window:_shouldShowRestoreButton()
 	if self._restoreMode=="Never" then return false end
 	if self._restoreMode=="Always" then return true end
-	if self._restoreMode=="Mobile" or self._restoreMode=="Auto" then return self.Device.IsTouch==true end
+	if self._restoreMode=="Mobile" then return self.Device.IsTouch==true end
+	if self._restoreMode=="Auto" then return true end
 	return false
 end
 function Window:_refreshRestoreButton()
@@ -6412,7 +6413,7 @@ end
 function Window:SetRestoreButton(options)
 	if options==false then self._restoreSpec=false; self._restoreMode="Never"; self:_refreshRestoreButton(); return self end
 	options=options or {}; self._restoreSpec=options; local b=self._restoreButton; if not b then return self end
-	if options.Enabled==false then self._restoreMode="Never" elseif options.Mode then self._restoreMode=options.Mode elseif next(options)~=nil then self._restoreMode="Always" elseif self._restoreMode==nil then self._restoreMode="Mobile" end
+	if options.Enabled==false then self._restoreMode="Never" elseif options.Mode then self._restoreMode=options.Mode elseif next(options)~=nil then self._restoreMode="Always" elseif self._restoreMode==nil then self._restoreMode="Always" end
 	local custom=next(options)~=nil
 	if custom and options.Size then local size=options.Size; if typeof(size)=="Vector2" then b.Size=UDim2.fromOffset(size.X,size.Y) elseif typeof(size)=="UDim2" then b.Size=size end elseif not custom then b.Size=UDim2.fromOffset(132,32) end
 	if custom and options.Position and typeof(options.Position)=="UDim2" then b.Position=options.Position; b.AnchorPoint=options.AnchorPoint or b.AnchorPoint elseif not custom then b.Position=UDim2.new(0.5,0,0,math.max(12,self.Device.Insets.Top+10)); b.AnchorPoint=Vector2.new(0.5,0) end
@@ -6423,7 +6424,7 @@ function Window:SetRestoreButton(options)
 	if custom and options.Draggable then local base=b.Position; self._janitor:Add(self.Input:AttachDrag(b,function(delta) b.Position=UDim2.new(base.X.Scale,base.X.Offset+delta.X,base.Y.Scale,base.Y.Offset+delta.Y) end,function() if self._visible then return false end; base=b.Position; return true end),"Destroy","restoreDrag") end
 	self:_refreshRestoreButton(); return self
 end
-function Window:SetShowText(text) self._showTextExplicit=text~=nil; self._showText=tostring(text or ("Show "..self.Title)); if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end; return self end
+function Window:SetShowText(text) self._showTextExplicit=text~=nil; self._showText=tostring(text or "Show BobloUI"); if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end; return self end
 
 function Window:SetLocked(locked) self._locked=locked==true; if self._grip then self._grip.Visible=not self._locked and self._layout~="Drawer" end; if self._footerHint then self._footerHint.Visible=not self._locked and self._layout~="Drawer" end; return self end
 function Window:IsLocked() return self._locked==true end
@@ -6492,7 +6493,6 @@ end
 function Window:SetTitle(title: string)
 	self.Title = title
 	if self._brandGlyph then self._brandGlyph.Text=title:sub(1,1):upper() end
-	if not self._showTextExplicit then self._showText="Show "..title; if self._restoreButton and not self._restoreIcon then self._restoreButton.Text=self._showText end end
 	self:_refreshHeaderTitle()
 	return self
 end
