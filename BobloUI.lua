@@ -1,7 +1,7 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T05:03:40.398Z
+	Built: 2026-08-25T05:46:08.037Z
 	Modules: 66
 ]]
 local __modules = {}
@@ -7277,7 +7277,7 @@ return {
 		["Dropdown"] = {
 			["Method"] = "AddDropdown",
 			["Options"] = {
-				["Options"] = "table",
+				["Options"] = "table?",
 				["Default"] = "any?",
 				["Multi"] = "boolean?",
 				["Searchable"] = "boolean?",
@@ -7287,7 +7287,7 @@ return {
 				["Style"] = "string?",
 				["Source"] = "any?",
 			},
-			["Required"] = { "Title", "Options" },
+			["Required"] = { "Title" },
 			["Stateful"] = true,
 		},
 		["Input"] = {
@@ -7758,6 +7758,9 @@ function Validate.Collect(typeName, options, path)
 	if type(options) ~= "table" then
 		return { `{path}: expected an options table` }
 	end
+	if typeName == "Dropdown" and options.Options == nil and options.Source == nil then
+		table.insert(errors, `{path}: requires either Options or Source`)
+	end
 	local available = optionsFor(spec)
 	local names = {}
 	for k in available do
@@ -7789,6 +7792,9 @@ function Validate.Control(typeName, options)
 	end
 	if type(options) ~= "table" then
 		error(`[BobloUI] {spec.Method} expects an options table.`, 3)
+	end
+	if typeName == "Dropdown" and options.Options == nil and options.Source == nil then
+		error("[BobloUI] AddDropdown requires either Options or Source.", 3)
 	end
 	for _, key in spec.Required or {} do
 		if options[key] == nil then
