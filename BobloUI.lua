@@ -1,7 +1,7 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T10:50:59.266Z
+	Built: 2026-08-25T10:56:13.380Z
 	Modules: 71
 
 THIRD-PARTY LICENSE NOTICES
@@ -4057,8 +4057,8 @@ function TextField.new(section, options)
 	self.Height = math.max(34, tonumber(options.Height) or (self.Multiline and 110 or 0))
 	self.ClearOnFocus = options.ClearOnFocus == true or options.ClearTextOnFocus == true
 	self.ClearTextOnBlur = options.ClearTextOnBlur == true
-	self.AllowEmpty = options.AllowEmpty ~= false
-	self.EmptyReset = if options.EmptyReset ~= nil then options.EmptyReset else default
+	self.AllowEmpty = if options.AllowEmpty ~= nil then options.AllowEmpty ~= false else not self.Numeric
+	self.EmptyReset = if options.EmptyReset ~= nil then options.EmptyReset else (self.Numeric and 0 or default)
 	self.Validate = options.Validate or options.VerifyValue
 	self.CommitOn = options.CommitOn
 		or if options.Finished == true then "Enter" elseif options.Finished == false then "Change" else "FocusLost"
