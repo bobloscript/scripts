@@ -1,8 +1,8 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T09:00:15.369Z
-	Modules: 65
+	Built: 2026-08-25T10:50:59.266Z
+	Modules: 71
 
 THIRD-PARTY LICENSE NOTICES
 
@@ -133,6 +133,7 @@ function Base.init(self, section, typeName, options, config)
 	self._dependencyVisible = true
 	self._manualDisabled = (options.Disabled == true or type(options.Disabled) == "string")
 	self._dependencyEnabled = true
+	self._containerEnabled = true
 	self._disabled = self._manualDisabled
 	self._disabledReason = type(options.Disabled) == "string" and options.Disabled or nil
 	self._loading = false
@@ -680,7 +681,7 @@ function Base:IsVisible()
 	return self._manualVisible and self._dependencyVisible
 end
 function Base:_applyDisabled()
-	self._disabled = self._manualDisabled or not self._dependencyEnabled
+	self._disabled = self._manualDisabled or not self._dependencyEnabled or not self._containerEnabled
 	if self._disabledOverlay then
 		self._disabledOverlay.Visible = self._disabled
 	end
@@ -695,7 +696,12 @@ function Base:SetDisabled(v, reason)
 	return self
 end
 function Base:IsDisabled()
-	return self._manualDisabled or not self._dependencyEnabled
+	return self._manualDisabled or not self._dependencyEnabled or not self._containerEnabled
+end
+function Base:_setContainerEnabled(enabled)
+	self._containerEnabled = enabled ~= false
+	self:_applyDisabled()
+	return self
 end
 function Base:SetLoading(v)
 	self._loading = v == true
@@ -848,7 +854,11 @@ function Button.new(section, options)
 	Base.init(self, section, "Button", options, { Stateful = false, Persist = false, Adaptive = true })
 	self.Variant = options.Variant or "Default"
 	self.Text = options.Text or options.Title or "Run"
-	self.Confirm = options.Confirm
+	self.Confirm = options.Confirm or (options.Risky and "Confirm this action?")
+	self.DoubleClick = options.DoubleClick
+	self.DoubleClickWindow = tonumber(options.DoubleClickWindow) or 0.45
+	self.SubButtons = options.SubButtons or options.Actions or {}
+	self._lastClick = 0
 	self.Clicked = Signal.new("Button.Clicked")
 	self._janitor:Add(self.Clicked)
 	return Base.finish(self)
@@ -870,7 +880,7 @@ function Button:_mountValue(host)
 	local bg, fg = self:_tokens()
 	local h = w.Tokens:Get("FieldHeight")
 	self._button = Create.New("TextButton", {
-		Size = UDim2.new(1, 0, 0, h),
+		Size = UDim2.new(#self.SubButtons > 0 and 0.68 or 1, #self.SubButtons > 0 and -3 or 0, 0, h),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
@@ -908,6 +918,65 @@ function Button:_mountValue(host)
 	self._janitor:Add(self._button.MouseButton1Click:Connect(function()
 		self:Click()
 	end))
+	self._actionButtons = {}
+	for _, action in self.SubButtons do
+		self:_mountAction(host, action)
+	end
+end
+function Button:_mountAction(host, action)
+	local w = self._window
+	local count = math.max(1, #self.SubButtons)
+	local index = #self._actionButtons + 1
+	local button = Create.New("TextButton", {
+		Size = UDim2.new(0.32 / count, -3, 0, w.Tokens:Get("FieldHeight")),
+		Position = UDim2.new(0.68 + ((index - 1) * 0.32 / count), 3, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = tostring(action.Text or action.Title or "…"),
+		Font = w.Fonts.Medium,
+		TextSize = w.Tokens:Get("FontSmall"),
+		Parent = host,
+	})
+	Create.New("UICorner", { CornerRadius = UDim.new(0, w.Tokens:Get("FieldRadius")), Parent = button })
+	local stroke = Create.New("UIStroke", {
+		Thickness = 1,
+		Transparency = 0.48,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = button,
+	})
+	w:_bind(button, { BackgroundColor3 = "ControlInset", TextColor3 = "TextSecondary" })
+	w:_bind(stroke, { Color = "BorderSubtle" })
+	button.MouseButton1Click:Connect(function()
+		if not self:IsDisabled() and not self._loading and action.Callback then
+			local ok, err = xpcall(action.Callback, debug.traceback, self)
+			if not ok then
+				warn(err)
+			end
+		end
+	end)
+	table.insert(self._actionButtons, button)
+	return button
+end
+function Button:AddAction(action)
+	table.insert(self.SubButtons, action or {})
+	if self._button then
+		self._button.Size = UDim2.new(0.68, -3, 0, self._window.Tokens:Get("FieldHeight"))
+		for _, button in self._actionButtons or {} do
+			button:Destroy()
+		end
+		self._actionButtons = {}
+		for _, spec in self.SubButtons do
+			self:_mountAction(self._valueHost, spec)
+		end
+	end
+	return self
+end
+function Button:AddKeybind(options)
+	options = table.clone(options or {})
+	options.AttachTo = self
+	return __require("controls/Keybind").new(self._section, options)
 end
 function Button:Click()
 	if self:IsDisabled() or self._loading then
@@ -915,6 +984,14 @@ function Button:Click()
 	end
 	if self._window.Sound then
 		self._window.Sound:Play("Click")
+	end
+	if self.DoubleClick then
+		local now = os.clock()
+		if now - self._lastClick > self.DoubleClickWindow then
+			self._lastClick = now
+			return self
+		end
+		self._lastClick = 0
 	end
 	local function run()
 		if self.Callback then
@@ -960,8 +1037,17 @@ function Button:_refreshText()
 end
 function Button:_applyValueTokens()
 	if self._button then
-		self._button.Size = UDim2.new(1, 0, 0, self._window.Tokens:Get("FieldHeight"))
+		self._button.Size = UDim2.new(
+			#self.SubButtons > 0 and 0.68 or 1,
+			#self.SubButtons > 0 and -3 or 0,
+			0,
+			self._window.Tokens:Get("FieldHeight")
+		)
 		self._button.TextSize = self._window.Tokens:Get("FontBody")
+	end
+	for _, button in self._actionButtons or {} do
+		button.Size = UDim2.new(0.32 / math.max(1, #self.SubButtons), -3, 0, self._window.Tokens:Get("FieldHeight"))
+		button.TextSize = self._window.Tokens:Get("FontSmall")
 	end
 end
 return Button
@@ -1538,7 +1624,14 @@ Divider.__index = Divider
 
 function Divider.new(section, options)
 	options = options or {}
+	if options.Title == nil and options.Text ~= nil then
+		options = table.clone(options)
+		options.Title = options.Text
+	end
 	local self = setmetatable({}, Divider)
+	local margin = math.max(0, tonumber(options.Margin) or 0)
+	self.MarginTop = math.max(0, tonumber(options.MarginTop) or margin)
+	self.MarginBottom = math.max(0, tonumber(options.MarginBottom) or margin)
 	Base.init(self, section, "Divider", options, { Stateful = false, Persist = false })
 	self._window.Registry:Update(self, { Title = self:_resolve(self.Title or "Divider") })
 	return Base.finish(self)
@@ -1550,22 +1643,24 @@ function Divider:_mount()
 	self._mounted = true
 	local w = self._window
 	self._root = Create.New("Frame", {
-		Size = UDim2.new(1, 0, 0, 20),
+		Size = UDim2.new(1, 0, 0, 20 + self.MarginTop + self.MarginBottom),
 		BackgroundTransparency = 1,
 		LayoutOrder = self._order,
 		Parent = self._section._content,
 	})
 	self._janitor:Add(self._root)
-	self._line = Create.New(
-		"Frame",
-		{ Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0.5, 0), BorderSizePixel = 0, Parent = self._root }
-	)
+	self._line = Create.New("Frame", {
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.fromOffset(0, self.MarginTop + 10),
+		BorderSizePixel = 0,
+		Parent = self._root,
+	})
 	w:_bind(self._line, { BackgroundColor3 = "BorderSubtle" })
 	if self.Title and self.Title ~= "" then
 		self._titleLabel = Create.New("TextLabel", {
 			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.new(0, 0, 1, 0),
-			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 0, 0, 20),
+			Position = UDim2.new(0.5, 0, 0, self.MarginTop + 10),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 0,
 			Font = w.Fonts.Regular,
@@ -1593,6 +1688,21 @@ function Divider:_applyTokens()
 	if self._titleLabel then
 		self._titleLabel.TextSize = self._window.Tokens:Get("FontSmall")
 	end
+end
+function Divider:SetMargins(top, bottom)
+	if type(top) ~= "number" or (bottom ~= nil and type(bottom) ~= "number") then
+		error("[BobloUI] Divider:SetMargins expects one or two numbers.", 2)
+	end
+	self.MarginTop = math.max(0, top)
+	self.MarginBottom = math.max(0, if bottom == nil then top else bottom)
+	if self._root then
+		self._root.Size = UDim2.new(1, 0, 0, 20 + self.MarginTop + self.MarginBottom)
+		self._line.Position = UDim2.fromOffset(0, self.MarginTop + 10)
+		if self._titleLabel then
+			self._titleLabel.Position = UDim2.new(0.5, 0, 0, self.MarginTop + 10)
+		end
+	end
+	return self
 end
 function Divider:_refreshText()
 	if self._titleLabel then
@@ -1623,22 +1733,45 @@ local RICH_ROW_HEIGHT = 48
 local ROW_GAP = 2
 local MAX_VISIBLE_ROWS = 7
 
+local function normalizeOption(option, forcedValue)
+	if type(option) == "table" then
+		local value = if forcedValue ~= nil then forcedValue else option.Value
+		if value ~= nil then
+			return {
+				Value = value,
+				Label = tostring(option.Title or option.Label or option.Text or value),
+				Description = option.Description or option.Desc,
+				Icon = option.Icon,
+				Image = option.Image,
+				Locked = option.Locked == true,
+				LockedReason = option.LockedReason,
+				Callback = option.Callback,
+			}
+		end
+	end
+	local value = if forcedValue ~= nil then forcedValue else option
+	return { Value = value, Label = tostring(option) }
+end
 local function normalize(options)
 	local out = {}
-	for _, o in options or {} do
-		if type(o) == "table" and o.Value ~= nil then
-			table.insert(out, {
-				Value = o.Value,
-				Label = tostring(o.Title or o.Label or o.Value),
-				Description = o.Description or o.Desc,
-				Icon = o.Icon,
-				Locked = o.Locked == true,
-				LockedReason = o.LockedReason,
-				Callback = o.Callback,
-			})
-		else
-			table.insert(out, { Value = o, Label = tostring(o) })
+	if type(options) ~= "table" then
+		return out
+	end
+	if #options > 0 then
+		for _, option in options do
+			table.insert(out, normalizeOption(option))
 		end
+		return out
+	end
+	local keys = {}
+	for key in options do
+		table.insert(keys, key)
+	end
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	for _, key in keys do
+		table.insert(out, normalizeOption(options[key], key))
 	end
 	return out
 end
@@ -1650,6 +1783,9 @@ local function contains(list, value)
 	end
 	return false
 end
+local function isDictionary(value)
+	return type(value) == "table" and #value == 0 and next(value) ~= nil
+end
 local function findOption(options, value)
 	for _, o in options do
 		if o.Value == value then
@@ -1658,32 +1794,111 @@ local function findOption(options, value)
 	end
 end
 local function rowHeight(o)
-	return o and (o.Description or o.Icon or o.Locked) and RICH_ROW_HEIGHT or ROW_HEIGHT
+	return o and (o.Description or o.Icon or o.Image or o.Locked) and RICH_ROW_HEIGHT or ROW_HEIGHT
 end
 
 function Dropdown.new(section, options)
 	local self = setmetatable({}, Dropdown)
+	local initialOptions = options.Options or options.Values or {}
+	self._options = normalize(initialOptions)
 	self.Multi = options.Multi == true
+	self.MultiValueMode = options.MultiValueMode
+		or if options.Map == true
+				or options.ReturnMap == true
+				or (self.Multi and isDictionary(options.Values))
+			then "Map"
+			else "Array"
+	if self.MultiValueMode ~= "Array" and self.MultiValueMode ~= "Map" then
+		error('[BobloUI] Dropdown MultiValueMode must be "Array" or "Map".', 3)
+	end
 	self.Style = options.Style or "Dropdown"
 	if self.Style == "Segmented" and self.Multi then
 		error("[BobloUI] segmented Dropdown does not support Multi=true.", 3)
 	end
 	self.Source = options.Source
-	self.Searchable = if options.Searchable == nil
-		then #(options.Options or {}) > 8 or self.Source ~= nil
-		else options.Searchable
-	self.AllowNone = options.AllowNone == true
+	self.Searchable = if options.Searchable == nil then #self._options > 8 or self.Source ~= nil else options.Searchable
+	self.AllowNone = options.AllowNone == true or options.AllowNull == true
 	self.Max = options.Max
+	self.MaxVisibleRows =
+		math.max(1, math.floor(tonumber(options.MaxVisibleRows or options.MaxVisibleDropdownItems) or MAX_VISIBLE_ROWS))
+	self.DragSelect = options.DragSelect == true
+	self.FormatDisplayValue = options.FormatDisplayValue or options.FormatValue
+	self.FormatListValue = options.FormatListValue or options.FormatOption
+	self.DisabledValues = options.DisabledValues or {}
+	self.ValueImages = options.ValueImages or options.Images or {}
 	self.Placeholder = options.Placeholder or "Select..."
-	self._options = normalize(options.Options or {})
+	self:_applyOptionMetadata()
 	self._popup = nil
 	local default = options.Default
 	if self.Multi and default == nil then
 		default = {}
+	elseif self.Multi and self.MultiValueMode == "Map" and type(default) == "table" and #default > 0 then
+		local mapped = {}
+		for _, value in default do
+			mapped[value] = true
+		end
+		default = mapped
 	end
 	Base.init(self, section, "Dropdown", options, { Stateful = true, Default = default, Adaptive = true })
 	self:_bindSource()
 	return Base.finish(self)
+end
+function Dropdown:_isSelected(selected, value)
+	if type(selected) ~= "table" then
+		return false
+	end
+	if self.MultiValueMode == "Map" then
+		return selected[value] == true
+	end
+	return contains(selected, value)
+end
+function Dropdown:_selectedList(selected)
+	if type(selected) ~= "table" then
+		return {}
+	end
+	if self.MultiValueMode == "Array" then
+		return table.clone(selected)
+	end
+	local out = {}
+	for _, option in self._options do
+		if selected[option.Value] == true then
+			table.insert(out, option.Value)
+		end
+	end
+	return out
+end
+function Dropdown:_selectionCount(selected)
+	return #self:_selectedList(selected)
+end
+function Dropdown:SetValue(value, silent)
+	if self.Multi and type(value) == "table" then
+		if self.MultiValueMode == "Map" and #value > 0 then
+			local mapped = {}
+			for _, selected in value do
+				mapped[selected] = true
+			end
+			value = mapped
+		elseif self.MultiValueMode == "Array" and isDictionary(value) then
+			local ordered = {}
+			for _, option in self._options do
+				if value[option.Value] == true then
+					table.insert(ordered, option.Value)
+				end
+			end
+			value = ordered
+		end
+	end
+	return Base.SetValue(self, value, silent)
+end
+function Dropdown:_applyOptionMetadata()
+	for _, option in self._options do
+		if contains(self.DisabledValues, option.Value) then
+			option.Locked = true
+		end
+		if self.ValueImages[option.Value] ~= nil then
+			option.Image = self.ValueImages[option.Value]
+		end
+	end
 end
 function Dropdown:_bindSource()
 	if self.Source == nil then
@@ -1860,15 +2075,32 @@ function Dropdown:_renderSegments(v)
 end
 function Dropdown:_labelFor(value)
 	local o = findOption(self._options, value)
-	return o and o.Label or tostring(value)
+	local label = o and o.Label or tostring(value)
+	if self.FormatDisplayValue then
+		local ok, formatted = pcall(self.FormatDisplayValue, value, label, o)
+		if ok and formatted ~= nil then
+			return tostring(formatted)
+		end
+	end
+	return label
+end
+function Dropdown:_listLabel(option)
+	if self.FormatListValue then
+		local ok, formatted = pcall(self.FormatListValue, option.Value, option.Label, option)
+		if ok and formatted ~= nil then
+			return tostring(formatted)
+		end
+	end
+	return option.Label
 end
 function Dropdown:_display(value)
 	if self.Multi then
-		if type(value) ~= "table" or #value == 0 then
+		local selected = self:_selectedList(value)
+		if #selected == 0 then
 			return self.Placeholder
 		end
 		local labels = {}
-		for _, v in value do
+		for _, v in selected do
 			table.insert(labels, self:_labelFor(v))
 		end
 		if #labels > 3 then
@@ -1887,7 +2119,7 @@ function Dropdown:_render(v)
 		return
 	end
 	if self._valueLabel then
-		local empty = v == nil or (type(v) == "table" and #v == 0)
+		local empty = v == nil or (self.Multi and self:_selectionCount(v) == 0)
 		self._valueLabel.Text = self:_display(v)
 		self._valueLabel.TextColor3 = self._window.Theme:Get(empty and "TextTertiary" or "Text")
 	end
@@ -1914,16 +2146,23 @@ function Dropdown:_select(option)
 	end
 	if self.Multi then
 		local current = table.clone(self:GetValue() or {})
-		local p = table.find(current, value)
 		local enabled
-		if p then
-			table.remove(current, p)
+		if self:_isSelected(current, value) then
+			if self.MultiValueMode == "Map" then
+				current[value] = nil
+			else
+				table.remove(current, table.find(current, value))
+			end
 			enabled = false
 		else
-			if self.Max and #current >= self.Max then
+			if self.Max and self:_selectionCount(current) >= self.Max then
 				return
 			end
-			table.insert(current, value)
+			if self.MultiValueMode == "Map" then
+				current[value] = true
+			else
+				table.insert(current, value)
+			end
 			enabled = true
 		end
 		self:SetValue(current)
@@ -1963,7 +2202,7 @@ function Dropdown:_popupMetrics(filtered)
 	local searchBlock = if self.Searchable then 42 else 0
 	local listTop = top + searchBlock
 	local listHeight = 0
-	for i = 1, math.max(1, math.min(MAX_VISIBLE_ROWS, #filtered)) do
+	for i = 1, math.max(1, math.min(self.MaxVisibleRows, #filtered)) do
 		listHeight += rowHeight(filtered[i]) + ((i > 1) and ROW_GAP or 0)
 	end
 	local height = listTop + listHeight + 8
@@ -1971,7 +2210,7 @@ function Dropdown:_popupMetrics(filtered)
 	local minWidth = if self.Searchable then 240 else 176
 	local rich = false
 	for _, o in filtered do
-		if o.Description or o.Icon then
+		if o.Description or o.Icon or o.Image then
 			rich = true
 			break
 		end
@@ -2056,7 +2295,7 @@ function Dropdown:_rebuildPopup()
 	local selected = self:GetValue()
 	local w = self._window
 	for _, o in filtered do
-		local isSelected = if self.Multi then contains(selected or {}, o.Value) else selected == o.Value
+		local isSelected = if self.Multi then self:_isSelected(selected, o.Value) else selected == o.Value
 		local h = rowHeight(o)
 		local b = Create.New("TextButton", {
 			Size = UDim2.new(1, 0, 0, h),
@@ -2069,7 +2308,18 @@ function Dropdown:_rebuildPopup()
 		Create.New("UICorner", { CornerRadius = UDim.new(0, 7), Parent = b })
 		w:_bind(b, { BackgroundColor3 = "AccentSoft" })
 		local left = 8
-		if o.Icon then
+		if o.Image then
+			local image = Create.New("ImageLabel", {
+				Size = UDim2.fromOffset(18, 18),
+				Position = UDim2.fromOffset(8, math.floor(h / 2)),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundTransparency = 1,
+				Image = tostring(o.Image),
+				Parent = b,
+			})
+			image.ImageTransparency = if o.Locked then 0.55 else 0
+			left = 34
+		elseif o.Icon then
 			local ic = Icon.new(w, o.Icon, {
 				Size = UDim2.fromOffset(15, 15),
 				Position = UDim2.fromOffset(9, math.floor(h / 2)),
@@ -2088,7 +2338,7 @@ function Dropdown:_rebuildPopup()
 			TextSize = w.Tokens:Get("FontBody"),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Text = o.Label,
+			Text = self:_listLabel(o),
 			Parent = b,
 		})
 		w:_bind(
@@ -2135,7 +2385,32 @@ function Dropdown:_rebuildPopup()
 		b.MouseLeave:Connect(function()
 			b.BackgroundTransparency = if isSelected then 0 else 1
 		end)
+		b.MouseEnter:Connect(function()
+			if self._dragSelecting and self.Multi and not self._dragVisited[o.Value] then
+				self._dragVisited[o.Value] = true
+				self:_select(o)
+			end
+		end)
+		b.InputBegan:Connect(function(input)
+			if
+				self.DragSelect
+				and self.Multi
+				and (
+					input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				)
+			then
+				self._dragSelecting = true
+				self._dragVisited = { [o.Value] = true }
+				self._skipClickOption = o
+				self:_select(o)
+			end
+		end)
 		b.MouseButton1Click:Connect(function()
+			if self._skipClickOption == o then
+				self._skipClickOption = nil
+				return
+			end
 			self:_select(o)
 		end)
 	end
@@ -2157,6 +2432,13 @@ function Dropdown:_clearPopupRefs()
 		self._popupSearchConn:Disconnect()
 		self._popupSearchConn = nil
 	end
+	if self._popupInputEnded then
+		self._popupInputEnded:Disconnect()
+		self._popupInputEnded = nil
+	end
+	self._dragSelecting = false
+	self._dragVisited = nil
+	self._skipClickOption = nil
 	self._search = nil
 	self._list = nil
 end
@@ -2192,6 +2474,16 @@ function Dropdown:Open()
 		handle = Popover.open(self._window, self._button, size, { OnDismiss = dismissed, Corner = 8 })
 	end
 	self._popup = handle
+	self._popupInputEnded = self._window.Input.Ended:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			self._dragSelecting = false
+			self._dragVisited = nil
+			self._skipClickOption = nil
+		end
+	end)
 	self:_buildPopup(handle.Frame)
 	self._arrow.Rotation = 180
 	self._button.BackgroundColor3 = self._window.Theme:Get("ControlHover")
@@ -2208,16 +2500,29 @@ function Dropdown:Close()
 	if self._arrow then
 		self._arrow.Rotation = 0
 	end
+	if self._popupInputEnded then
+		self._popupInputEnded:Disconnect()
+		self._popupInputEnded = nil
+	end
 	return self
 end
 function Dropdown:SetOptions(list, silent)
 	self._options = normalize(list or {})
+	self:_applyOptionMetadata()
 	local current = self:GetValue()
 	if self.Multi then
 		local kept = {}
-		for _, v in current or {} do
-			if findOption(self._options, v) then
-				table.insert(kept, v)
+		if self.MultiValueMode == "Map" then
+			for value, selected in current or {} do
+				if selected == true and findOption(self._options, value) then
+					kept[value] = true
+				end
+			end
+		else
+			for _, value in current or {} do
+				if findOption(self._options, value) then
+					table.insert(kept, value)
+				end
 			end
 		end
 		self:SetValue(kept, true)
@@ -2254,8 +2559,36 @@ function Dropdown:AddOption(o)
 	local n = normalize({ o })[1]
 	if n then
 		table.insert(self._options, n)
+		self:_applyOptionMetadata()
 	end
 	self:_rebuildPopup()
+	return self
+end
+function Dropdown:SetValues(values, silent)
+	return self:SetOptions(values, silent)
+end
+function Dropdown:AddValues(values)
+	local additions
+	if type(values) == "table" and values.Value ~= nil then
+		additions = { normalizeOption(values) }
+	elseif type(values) == "table" then
+		additions = normalize(values)
+	else
+		additions = { normalizeOption(values) }
+	end
+	for _, option in additions do
+		local existing = findOption(self._options, option.Value)
+		if existing then
+			for key, value in option do
+				existing[key] = value
+			end
+		else
+			table.insert(self._options, option)
+		end
+	end
+	self:_applyOptionMetadata()
+	self:_rebuildPopup()
+	self:_render(self:GetValue())
 	return self
 end
 function Dropdown:RemoveOption(value)
@@ -2265,6 +2598,95 @@ function Dropdown:RemoveOption(value)
 		end
 	end
 	return self:SetOptions(self._options)
+end
+function Dropdown:SetDisabledValues(values)
+	self.DisabledValues = values or {}
+	for _, option in self._options do
+		option.Locked = contains(self.DisabledValues, option.Value)
+	end
+	self:_rebuildPopup()
+	return self
+end
+function Dropdown:AddDisabledValues(values)
+	local additions = if type(values) == "table" then values else { values }
+	local merged = table.clone(self.DisabledValues)
+	for _, value in additions do
+		if value ~= nil and not contains(merged, value) then
+			table.insert(merged, value)
+		end
+	end
+	return self:SetDisabledValues(merged)
+end
+function Dropdown:SetValueDisabled(value, disabled, reason)
+	local option = findOption(self._options, value)
+	if not option then
+		return false
+	end
+	option.Locked = disabled == true
+	option.LockedReason = reason or option.LockedReason
+	self:_rebuildPopup()
+	return self
+end
+function Dropdown:SetValueImage(value, image)
+	local option = findOption(self._options, value)
+	if not option then
+		return false
+	end
+	option.Image = image
+	self.ValueImages[value] = image
+	self:_rebuildPopup()
+	return self
+end
+function Dropdown:SetValueImages(images)
+	self.ValueImages = table.clone(images or {})
+	for _, option in self._options do
+		option.Image = self.ValueImages[option.Value]
+	end
+	self:_rebuildPopup()
+	return self
+end
+function Dropdown:AddValueImages(images)
+	for value, image in images or {} do
+		self.ValueImages[value] = image
+		local option = findOption(self._options, value)
+		if option then
+			option.Image = image
+		end
+	end
+	self:_rebuildPopup()
+	return self
+end
+function Dropdown:SetDragSelect(enabled)
+	self.DragSelect = enabled == true
+	if not self.DragSelect then
+		self._dragSelecting = false
+		self._dragVisited = nil
+		self._skipClickOption = nil
+	end
+	return self
+end
+function Dropdown:GetActiveValues(countOnly)
+	local current = self:GetValue()
+	if self.Multi then
+		local values = table.clone(type(current) == "table" and current or {})
+		return if countOnly then self:_selectionCount(values) else values
+	end
+	if countOnly then
+		return if current == nil then 0 else 1
+	end
+	return current
+end
+function Dropdown:SetMaxVisibleRows(count)
+	self.MaxVisibleRows = math.max(1, math.floor(tonumber(count) or self.MaxVisibleRows))
+	self:_resizePopup()
+	return self
+end
+function Dropdown:SetFormatters(displayFormatter, listFormatter)
+	self.FormatDisplayValue = displayFormatter
+	self.FormatListValue = listFormatter
+	self:_render(self:GetValue())
+	self:_rebuildPopup()
+	return self
 end
 function Dropdown:Destroy()
 	self:Close()
@@ -2299,6 +2721,11 @@ function Image.new(section, options)
 	self.Height = math.max(64, tonumber(options.Height) or 160)
 	self.ScaleType = options.ScaleType or Enum.ScaleType.Fit
 	self.Caption = options.Caption
+	self.Tint = options.Tint or options.ImageColor3 or Color3.new(1, 1, 1)
+	self.Transparency = math.clamp(tonumber(options.Transparency or options.ImageTransparency) or 0, 0, 1)
+	self.BackgroundTransparency = math.clamp(tonumber(options.BackgroundTransparency) or 0, 0, 1)
+	self.RectOffset = options.RectOffset or options.ImageRectOffset or Vector2.new()
+	self.RectSize = options.RectSize or options.ImageRectSize or Vector2.new()
 	Base.init(self, section, "Image", options, { Stateful = false, Default = nil, Layout = "Stacked" })
 	return Base.finish(self)
 end
@@ -2315,25 +2742,29 @@ function Image:_mountValue(host)
 		BorderSizePixel = 0,
 		Image = self.Image,
 		ScaleType = self.ScaleType,
+		ImageColor3 = self.Tint,
+		ImageTransparency = self.Transparency,
+		BackgroundTransparency = self.BackgroundTransparency,
+		ImageRectOffset = self.RectOffset,
+		ImageRectSize = self.RectSize,
 		Parent = host,
 	})
 	Create.New("UICorner", { CornerRadius = UDim.new(0, t:Get("FieldRadius")), Parent = self._image })
 	local s = Create.New("UIStroke", { Thickness = 1, Transparency = 0.58, Parent = self._image })
 	w:_bind(s, { Color = "BorderSubtle" })
 	w:_bind(self._image, { BackgroundColor3 = "ControlInset" })
-	if self.Caption then
-		self._caption = Create.New("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 20),
-			Position = UDim2.fromOffset(0, self.Height + 6),
-			BackgroundTransparency = 1,
-			Text = tostring(self.Caption),
-			Font = w.Fonts.Regular,
-			TextSize = t:Get("FontSmall"),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Parent = host,
-		})
-		w:_bind(self._caption, { TextColor3 = "TextTertiary" })
-	end
+	self._caption = Create.New("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 20),
+		Position = UDim2.fromOffset(0, self.Height + 6),
+		BackgroundTransparency = 1,
+		Text = tostring(self.Caption or ""),
+		Visible = self.Caption ~= nil,
+		Font = w.Fonts.Regular,
+		TextSize = t:Get("FontSmall"),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = host,
+	})
+	w:_bind(self._caption, { TextColor3 = "TextTertiary" })
 end
 function Image:_applyValueTokens()
 	if self._valueHost then
@@ -2342,6 +2773,9 @@ function Image:_applyValueTokens()
 	end
 	if self._image then
 		self._image.Size = UDim2.new(1, 0, 0, self.Height)
+	end
+	if self._caption then
+		self._caption.Position = UDim2.fromOffset(0, self.Height + 6)
 	end
 end
 function Image:SetImage(value)
@@ -2355,6 +2789,57 @@ function Image:SetCaption(value)
 	self.Caption = value
 	if self._caption then
 		self._caption.Text = tostring(value or "")
+		self._caption.Visible = value ~= nil
+	end
+	if self._mounted then
+		self:_applyTokens()
+	end
+	return self
+end
+function Image:SetHeight(value)
+	self.Height = math.max(64, tonumber(value) or self.Height)
+	if self._mounted then
+		self:_applyTokens()
+	end
+	return self
+end
+function Image:SetTint(value)
+	if typeof(value) ~= "Color3" then
+		error("[BobloUI] Image:SetTint expects Color3.", 2)
+	end
+	self.Tint = value
+	if self._image then
+		self._image.ImageColor3 = value
+	end
+	return self
+end
+function Image:SetTransparency(value, background)
+	self.Transparency = math.clamp(tonumber(value) or self.Transparency, 0, 1)
+	if background ~= nil then
+		self.BackgroundTransparency = math.clamp(tonumber(background) or self.BackgroundTransparency, 0, 1)
+	end
+	if self._image then
+		self._image.ImageTransparency = self.Transparency
+		self._image.BackgroundTransparency = self.BackgroundTransparency
+	end
+	return self
+end
+function Image:SetRect(offset, size)
+	if typeof(offset) ~= "Vector2" or typeof(size) ~= "Vector2" then
+		error("[BobloUI] Image:SetRect expects Vector2 offset and size.", 2)
+	end
+	self.RectOffset = offset
+	self.RectSize = size
+	if self._image then
+		self._image.ImageRectOffset = offset
+		self._image.ImageRectSize = size
+	end
+	return self
+end
+function Image:SetScaleType(scaleType)
+	self.ScaleType = scaleType or Enum.ScaleType.Fit
+	if self._image then
+		self._image.ScaleType = self.ScaleType
 	end
 	return self
 end
@@ -2368,6 +2853,26 @@ local Create = __require("runtime/Create")
 local Base = __require("controls/Base")
 local Keybind = setmetatable({}, { __index = Base })
 Keybind.__index = Keybind
+
+local MODIFIERS = {
+	Ctrl = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
+	Shift = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift },
+	Alt = { Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt },
+	Meta = { Enum.KeyCode.LeftMeta, Enum.KeyCode.RightMeta },
+}
+local MODIFIER_ORDER = { "Ctrl", "Shift", "Alt", "Meta" }
+local MODIFIER_ALIAS = {
+	Control = "Ctrl",
+	LeftControl = "Ctrl",
+	RightControl = "Ctrl",
+	LeftShift = "Shift",
+	RightShift = "Shift",
+	LeftAlt = "Alt",
+	RightAlt = "Alt",
+	LeftMeta = "Meta",
+	RightMeta = "Meta",
+}
+
 local function keyName(key)
 	if typeof(key) == "EnumItem" then
 		return key.Name
@@ -2386,27 +2891,101 @@ local function enumKey(name)
 	end
 	return nil
 end
-function Keybind.new(section, options)
-	local self = setmetatable({}, Keybind)
-	self.Mode = options.Mode or "Toggle"
-	self._actionCallback = options.Callback
-	local baseOptions = table.clone(options)
-	baseOptions.Callback = nil
-	if section._window.Device.Class == "Phone" and baseOptions.Visible == nil then
-		baseOptions.Visible = false
+local function normalizeModifiers(modifiers)
+	local present = {}
+	for _, modifier in modifiers or {} do
+		local name = if typeof(modifier) == "EnumItem" then modifier.Name else tostring(modifier)
+		name = MODIFIER_ALIAS[name] or name
+		if MODIFIERS[name] then
+			present[name] = true
+		end
 	end
-	self.AllowedModes = options.AllowedModes or { "Toggle", "Hold", "Always" }
+	local out = {}
+	for _, name in MODIFIER_ORDER do
+		if present[name] then
+			table.insert(out, name)
+		end
+	end
+	return out
+end
+local function chordText(value)
+	local parts = {}
+	for _, modifier in normalizeModifiers(type(value) == "table" and value.Modifiers or {}) do
+		table.insert(parts, modifier)
+	end
+	table.insert(parts, keyName(value))
+	return table.concat(parts, " + ")
+end
+local function containsKey(list, key)
+	for _, candidate in list or {} do
+		if candidate == key or keyName(candidate) == keyName(key) then
+			return true
+		end
+	end
+	return false
+end
+
+function Keybind.new(section, options)
+	options = options or {}
+	local self = setmetatable({}, Keybind)
+	self.Mode = options.Mode or (type(options.Default) == "table" and options.Default.Mode) or "Toggle"
+	self._actionCallback = options.Callback or options.Clicked
+	self.CustomModes = options.CustomModes or options.Modes or {}
+	self.AllowedModes = table.clone(options.AllowedModes or { "Toggle", "Hold", "Always" })
+	for mode in self.CustomModes do
+		if not table.find(self.AllowedModes, mode) then
+			table.insert(self.AllowedModes, mode)
+		end
+	end
 	if not table.find(self.AllowedModes, self.Mode) then
 		error(`[BobloUI] keybind mode "{self.Mode}" is not allowed.`, 3)
 	end
-	self.Blacklist = options.Blacklist or {}
+	self.Blacklist = options.Blacklist or options.Blacklisted or {}
+	self.Whitelist = options.Whitelist or options.Whitelisted
+	self.ModifierBlacklist = options.ModifierBlacklist or options.BlacklistModifiers or options.BlacklistedModifiers
+	self.ModifierWhitelist = options.ModifierWhitelist or options.WhitelistedModifiers
+	self.ExactModifiers = options.ExactModifiers == true
+	self.WaitForCallback = options.WaitForCallback == true
+	self._callbackBusy = false
+	self.Mobile = options.Mobile ~= false
+	self.MobileText = options.MobileText or options.Title
+	self.NoUI = options.NoUI == true
+	self._attached = options.AttachTo
+	local syncToggle = if options.SyncToggle ~= nil then options.SyncToggle else options.SyncToggleState
+	self.SyncToggle = if syncToggle == nil
+		then self._attached and self._attached.Type == "Toggle"
+		else syncToggle == true
 	self._binding = nil
 	self._capturing = false
-	local d = options.Default
-	local stored = { Key = keyName(d or Enum.KeyCode.E), Mode = self.Mode }
+
+	local default = options.Default
+	local stored
+	if type(default) == "table" then
+		stored = {
+			Key = keyName(default.Key or Enum.KeyCode.E),
+			Mode = default.Mode or self.Mode,
+			Modifiers = normalizeModifiers(default.Modifiers or options.Modifiers or options.DefaultModifiers),
+		}
+	else
+		stored = {
+			Key = keyName(default or Enum.KeyCode.E),
+			Mode = self.Mode,
+			Modifiers = normalizeModifiers(options.Modifiers or options.DefaultModifiers),
+		}
+	end
+	local baseOptions = table.clone(options)
+	baseOptions.Callback = nil
+	if self.NoUI or (section._window.Device.Class == "Phone" and baseOptions.Visible == nil) then
+		baseOptions.Visible = false
+	end
 	Base.init(self, section, "Keybind", baseOptions, { Stateful = true, Default = stored, Adaptive = true })
-	return Base.finish(self)
+	local handle = Base.finish(self)
+	if options.ChangedCallback then
+		handle:OnChanged(options.ChangedCallback)
+	end
+	return handle
 end
+
 function Keybind:_mountValue(host)
 	local w = self._window
 	local t = w.Tokens
@@ -2422,7 +3001,12 @@ function Keybind:_mountValue(host)
 		Parent = host,
 	})
 	Create.New("UICorner", { CornerRadius = UDim.new(0, t:Get("FieldRadius")), Parent = self._button })
-	self._stroke = Create.New("UIStroke", { Thickness = 1, Transparency = 0.45, Parent = self._button })
+	self._stroke = Create.New("UIStroke", {
+		Thickness = 1,
+		Transparency = 0.45,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = self._button,
+	})
 	w:_bind(self._stroke, { Color = "BorderSubtle" })
 	w:_bind(self._button, { BackgroundColor3 = "ControlInset", TextColor3 = "TextSecondary" })
 	self._janitor:Add(self._button.MouseEnter:Connect(function()
@@ -2440,99 +3024,235 @@ function Keybind:_mountValue(host)
 	end))
 	self:_rebind()
 end
-function Keybind:_render(v)
-	if type(v) == "table" then
-		self.Mode = v.Mode or self.Mode
+
+function Keybind:_render(value)
+	if type(value) == "table" then
+		self.Mode = value.Mode or self.Mode
 	end
 	if self._button then
-		self._button.Text = if self._capturing then "Press a key…" else `{keyName(v)}  ·  {self.Mode}`
+		self._button.Text = if self._capturing then "Press a key…" else `{chordText(value)}  ·  {self.Mode}`
 		self._button.BackgroundColor3 = self._window.Theme:Get(self._capturing and "AccentSoft" or "ControlInset")
 		self._stroke.Color = self._window.Theme:Get(self._capturing and "AccentBorder" or "BorderSubtle")
 		self:_rebind()
 	end
 end
+
+function Keybind:_dispatch(active)
+	if self.WaitForCallback and self._callbackBusy then
+		return
+	end
+	local function dispatch()
+		local attached = self._attached
+		if attached and not attached._destroyed then
+			if self.SyncToggle and attached.SetValue then
+				attached:SetValue(active)
+			elseif active and attached.Click then
+				attached:Click()
+			end
+		end
+		if self._actionCallback then
+			self._actionCallback(active, self)
+		end
+	end
+	if self.WaitForCallback then
+		self._callbackBusy = true
+	end
+	local ok, err = xpcall(dispatch, debug.traceback)
+	self._callbackBusy = false
+	if not ok then
+		warn(err)
+	end
+end
+
 function Keybind:_rebind()
 	if self._binding then
+		self._janitor:Release("keybinding")
 		self._binding:Destroy()
 		self._binding = nil
 	end
-	local v = self:GetValue()
-	if not self._mounted or type(v) ~= "table" then
+	local value = self:GetValue()
+	if not self._mounted or type(value) ~= "table" then
 		return
 	end
-	local key = enumKey(v.Key)
-	if not key then
+	local key = enumKey(value.Key)
+	local modifiers = normalizeModifiers(value.Modifiers)
+	if not key or not self:_keyAllowed(key) or not self:_modifiersAllowed(modifiers) then
 		return
 	end
-	self._binding = self._window.Input:BindKey(self.Id or tostring(self), key, v.Mode or self.Mode, function(active)
-		if self._actionCallback then
-			local ok, err = xpcall(self._actionCallback, debug.traceback, active)
-			if not ok then
-				warn(err)
-			end
-		end
-	end)
+	self._binding = self._window.Input:BindKey(self.Id or tostring(self), key, value.Mode or self.Mode, function(active)
+		self:_dispatch(active)
+	end, {
+		Modifiers = modifiers,
+		ExactModifiers = self.ExactModifiers,
+		ModeHandler = self.CustomModes[value.Mode or self.Mode],
+	})
 	self._janitor:Add(self._binding, "Destroy", "keybinding")
 end
+
+function Keybind:_capturedModifiers(primary)
+	local out = {}
+	for _, name in MODIFIER_ORDER do
+		for _, key in MODIFIERS[name] do
+			if key ~= primary and self._window.Input:IsKeyDown(key) then
+				table.insert(out, name)
+				break
+			end
+		end
+	end
+	return out
+end
+
+function Keybind:_keyAllowed(key)
+	if self.Whitelist and not containsKey(self.Whitelist, key) then
+		return false
+	end
+	return not containsKey(self.Blacklist, key)
+end
+
+function Keybind:_modifiersAllowed(modifiers)
+	local normalized = normalizeModifiers(modifiers)
+	local allowed = if self.ModifierWhitelist ~= nil then normalizeModifiers(self.ModifierWhitelist) else nil
+	local denied = normalizeModifiers(self.ModifierBlacklist)
+	for _, modifier in normalized do
+		if allowed and not table.find(allowed, modifier) then
+			return false
+		end
+		if table.find(denied, modifier) then
+			return false
+		end
+	end
+	return true
+end
+
 function Keybind:Capture()
 	if self._capturing then
 		return self
 	end
 	self._capturing = true
 	self:_render(self:GetValue())
-	local cancel = self._window.Input:CaptureNextKey(function(key)
-		-- The capture has already been consumed by Input. Release the stale
-		-- Janitor entry without invoking its cancellation callback.
-		self._janitor:Release("capture")
-		self._capturing = false
-		if table.find(self.Blacklist, key) then
+	local arm
+	arm = function()
+		local cancel = self._window.Input:CaptureNextKey(function(key)
+			self._janitor:Release("capture")
+			if self._destroyed then
+				return
+			end
+			if key == Enum.KeyCode.Escape then
+				self._capturing = false
+				self:_render(self:GetValue())
+				return
+			end
+			if MODIFIER_ALIAS[key.Name] then
+				arm()
+				return
+			end
+			if not self:_keyAllowed(key) then
+				arm()
+				return
+			end
+			local modifiers = self:_capturedModifiers(key)
+			if not self:_modifiersAllowed(modifiers) then
+				arm()
+				return
+			end
+			self._capturing = false
+			local value = table.clone(self:GetValue() or {})
+			value.Key = key.Name
+			value.Mode = self.Mode
+			value.Modifiers = modifiers
+			self:SetValue(value)
+		end, function()
+			if self._destroyed then
+				return
+			end
+			self._capturing = false
 			self:_render(self:GetValue())
-			return
-		end
-		local v = table.clone(self:GetValue() or {})
-		v.Key = key.Name
-		v.Mode = self.Mode
-		self:SetValue(v)
-	end, function()
-		if self._destroyed then
-			return
-		end
+		end)
+		self._janitor:Add(cancel, nil, "capture")
+	end
+	arm()
+	return self
+end
+
+function Keybind:Cancel()
+	if self._capturing then
+		self._janitor:Remove("capture")
 		self._capturing = false
 		self:_render(self:GetValue())
-	end)
-	self._janitor:Add(cancel, nil, "capture")
-	return self
-end
-function Keybind:Cancel()
-	if not self._capturing then
-		return self
 	end
-	self._janitor:Remove("capture")
-	self._capturing = false
-	self:_render(self:GetValue())
 	return self
 end
+
 function Keybind:SetMode(mode)
 	if not table.find(self.AllowedModes, mode) then
 		error(`[BobloUI] keybind mode "{mode}" is not allowed.`, 2)
 	end
 	self.Mode = mode
-	local v = table.clone(self:GetValue() or {})
-	v.Mode = mode
-	return self:SetValue(v)
+	local value = table.clone(self:GetValue() or {})
+	value.Mode = mode
+	return self:SetValue(value)
 end
+
+function Keybind:SetKey(key, modifiers)
+	local resolved = enumKey(key)
+	if not resolved or not self:_keyAllowed(resolved) then
+		return false
+	end
+	local value = table.clone(self:GetValue() or {})
+	value.Key = resolved.Name
+	if modifiers ~= nil then
+		local normalized = normalizeModifiers(modifiers)
+		if not self:_modifiersAllowed(normalized) then
+			return false
+		end
+		value.Modifiers = normalized
+	end
+	self:SetValue(value)
+	return self
+end
+
+function Keybind:SetModifiers(modifiers)
+	local normalized = normalizeModifiers(modifiers)
+	if not self:_modifiersAllowed(normalized) then
+		return false
+	end
+	local value = table.clone(self:GetValue() or {})
+	value.Modifiers = normalized
+	return self:SetValue(value)
+end
+
+function Keybind:GetModifiers()
+	return normalizeModifiers((self:GetValue() or {}).Modifiers)
+end
+
+function Keybind:Attach(control, syncToggle)
+	self._attached = control
+	self.SyncToggle = if syncToggle == nil then control and control.Type == "Toggle" else syncToggle == true
+	return self
+end
+
+function Keybind:Trigger()
+	if self._binding and not self:IsDisabled() then
+		self._binding:Trigger()
+	end
+	return self
+end
+
 function Keybind:IsActive()
 	return self._binding and self._binding.Active or false
 end
+
 function Keybind:Focus()
 	return self:Capture()
 end
+
 function Keybind:_applyValueTokens()
 	if self._button then
 		self._button.Size = UDim2.new(1, 0, 0, self._window.Tokens:Get("FieldHeight"))
 		self._button.TextSize = self._window.Tokens:Get("FontSmall")
 	end
 end
+
 return Keybind
 
 end
@@ -2549,6 +3269,9 @@ function Paragraph.new(section, options)
 	local self = setmetatable({}, Paragraph)
 	self.Content = options.Content or ""
 	self.Variant = options.Variant or "Default"
+	self.RichText = options.RichText == true
+	self.DoesWrap = if options.DoesWrap ~= nil then options.DoesWrap ~= false else options.Wrap ~= false
+	self.TextSize = tonumber(options.Size)
 	Base.init(self, section, "Paragraph", options, { Stateful = false, Persist = false })
 	self._window.Registry:Update(self, {
 		Title = self:_resolve((self.Title and self.Title ~= "") and self.Title or self.Content),
@@ -2604,6 +3327,7 @@ function Paragraph:_mount()
 			TextSize = w.Tokens:Get("FontBody"),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Text = self:_resolve(self.Title),
+			RichText = self.RichText,
 			Parent = self._root,
 		})
 		w:_bind(self._titleLabel, { TextColor3 = "Text" })
@@ -2613,8 +3337,9 @@ function Paragraph:_mount()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Font = w.Fonts.Regular,
-		TextSize = w.Tokens:Get("FontSmall"),
-		TextWrapped = true,
+		TextSize = self.TextSize or w.Tokens:Get("FontSmall"),
+		TextWrapped = self.DoesWrap,
+		RichText = self.RichText,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Text = self:_resolve(self.Content),
@@ -2644,7 +3369,7 @@ function Paragraph:_applyTokens()
 		self._titleLabel.TextSize = t:Get("FontBody")
 	end
 	if self._content then
-		self._content.TextSize = t:Get("FontSmall")
+		self._content.TextSize = self.TextSize or t:Get("FontSmall")
 	end
 end
 function Paragraph:_refreshText()
@@ -2672,7 +3397,129 @@ function Paragraph:SetContent(v)
 	self._window.Registry:Update(self, fields)
 	return self
 end
+function Paragraph:SetRichText(enabled)
+	self.RichText = enabled == true
+	if self._titleLabel then
+		self._titleLabel.RichText = self.RichText
+	end
+	if self._content then
+		self._content.RichText = self.RichText
+	end
+	return self
+end
+function Paragraph:SetWrap(enabled)
+	self.DoesWrap = enabled ~= false
+	if self._content then
+		self._content.TextWrapped = self.DoesWrap
+	end
+	return self
+end
+function Paragraph:SetSize(size)
+	if size ~= nil and type(size) ~= "number" then
+		error("[BobloUI] Paragraph:SetSize expects number or nil.", 2)
+	end
+	self.TextSize = size
+	if self._content then
+		self._content.TextSize = size or self._window.Tokens:Get("FontSmall")
+	end
+	return self
+end
 return Paragraph
+
+end
+
+__modules["controls/Passthrough"] = function()
+--!nonstrict
+local Base = __require("controls/Base")
+local Passthrough = setmetatable({}, { __index = Base })
+Passthrough.__index = Passthrough
+
+function Passthrough.new(section, options)
+	options = options or {}
+	if typeof(options.Instance) ~= "Instance" or not options.Instance:IsA("GuiObject") then
+		error("[BobloUI] AddPassthrough requires Instance = GuiObject.", 3)
+	end
+	local self = setmetatable({}, Passthrough)
+	self.Height = math.max(1, tonumber(options.Height) or options.Instance.Size.Y.Offset or 40)
+	self.Fill = options.Fill ~= false
+	self.Clone = options.Clone == true
+	self.DestroyInstance = options.DestroyInstance ~= false
+	self._sourceInstance = options.Instance
+	self._contentInstance = if self.Clone then options.Instance:Clone() else options.Instance
+	self._originalParent = options.Instance.Parent
+	Base.init(self, section, "Passthrough", options, { Stateful = false, Persist = false, Layout = "Stacked" })
+	return Base.finish(self)
+end
+
+function Passthrough:_measure()
+	local t = self._window.Tokens
+	return t:Get("ControlHeight") + self.Height + (self.Description and 12 or 0) + 10
+end
+
+function Passthrough:_mountValue(host)
+	self._contentInstance.Parent = host
+	if self.Fill then
+		self._contentInstance.Size = UDim2.new(1, 0, 0, self.Height)
+	end
+end
+
+function Passthrough:_releaseContent()
+	local content = self._contentInstance
+	if not content then
+		return
+	end
+	if self.Clone or self.DestroyInstance then
+		content:Destroy()
+	else
+		content.Parent = self._originalParent
+	end
+	self._contentInstance = nil
+end
+
+function Passthrough:_applyValueTokens()
+	if self._valueHost then
+		self._valueHost.Size = UDim2.new(1, -self._window.Tokens:Get("ControlPadding") * 2, 0, self.Height)
+	end
+	if self.Fill and self._contentInstance then
+		self._contentInstance.Size = UDim2.new(1, 0, 0, self.Height)
+	end
+end
+
+function Passthrough:SetHeight(height)
+	self.Height = math.max(1, tonumber(height) or self.Height)
+	if self._mounted then
+		self:_applyTokens()
+	end
+	return self
+end
+
+function Passthrough:SetInstance(instance, clone)
+	if typeof(instance) ~= "Instance" or not instance:IsA("GuiObject") then
+		error("[BobloUI] Passthrough:SetInstance expects GuiObject.", 2)
+	end
+	self:_releaseContent()
+	if clone ~= nil then
+		self.Clone = clone == true
+	end
+	self._sourceInstance = instance
+	self._originalParent = instance.Parent
+	self._contentInstance = if self.Clone then instance:Clone() else instance
+	if self._valueHost then
+		self:_mountValue(self._valueHost)
+	end
+	return self
+end
+
+function Passthrough:GetContentInstance()
+	return self._contentInstance
+end
+
+function Passthrough:Destroy()
+	self:_releaseContent()
+	Base.Destroy(self)
+end
+
+return Passthrough
 
 end
 
@@ -2818,11 +3665,16 @@ function Slider.new(section, options)
 	self.Min = options.Min
 	self.Max = options.Max
 	self.Step = options.Step or 1
-	self.Precision = options.Precision
+	self.Precision = if options.Precision ~= nil then options.Precision else options.Rounding
+	self.Prefix = options.Prefix or ""
 	self.Suffix = options.Suffix or ""
-	self.Format = options.Format
+	self.Format = options.Format or options.FormatDisplayValue
 	self.ValueInput = options.ValueInput ~= false
+	self.AllowRightClickInput = options.AllowRightClickInput == true
 	self.FloatingValue = options.FloatingValue == true
+	self.Compact = options.Compact == true
+	-- Keep the historic BobloUI display unless HideMax is explicitly false.
+	self.HideMax = options.HideMax ~= false
 	self.IconFrom = options.IconFrom
 	self.IconTo = options.IconTo
 	local d = options.Default
@@ -2830,23 +3682,45 @@ function Slider.new(section, options)
 		d = self.Min
 	end
 	d = math.clamp(d, self.Min, self.Max)
-	Base.init(self, section, "Slider", options, { Stateful = true, Default = d, Layout = "Stacked" })
+	Base.init(self, section, "Slider", options, {
+		Stateful = true,
+		Default = d,
+		Layout = if self.Compact then nil else "Stacked",
+	})
 	return Base.finish(self)
 end
 function Slider:_format(v)
 	if self.Format then
-		return self.Format(v)
+		return tostring(self.Format(v))
 	end
+	local value
 	if self.Precision then
-		return string.format("%." .. self.Precision .. "f", v) .. self.Suffix
+		value = string.format("%." .. self.Precision .. "f", v)
+	else
+		value = tostring(v)
 	end
-	return tostring(v) .. self.Suffix
+	local maximum = if self.Precision
+		then string.format("%." .. self.Precision .. "f", self.Max)
+		else tostring(self.Max)
+	local range = if self.HideMax then value else `{value} / {maximum}`
+	return self.Prefix .. range .. self.Suffix
 end
 function Slider:_normalize(v)
 	v = tonumber(v) or self.Min
 	v = math.clamp(v, self.Min, self.Max)
 	v = math.round((v - self.Min) / self.Step) * self.Step + self.Min
 	return math.clamp(v, self.Min, self.Max)
+end
+function Slider:_parseInput(text)
+	text = tostring(text or "")
+	if self.Prefix ~= "" and string.sub(text, 1, #self.Prefix) == self.Prefix then
+		text = string.sub(text, #self.Prefix + 1)
+	end
+	if self.Suffix ~= "" and string.sub(text, -#self.Suffix) == self.Suffix then
+		text = string.sub(text, 1, #text - #self.Suffix)
+	end
+	text = string.match(text, "^%s*([^/]+)") or text
+	return tonumber(string.match(text, "^%s*(.-)%s*$"))
 end
 function Slider:SetValue(v, silent)
 	return Base.SetValue(self, self:_normalize(v), silent)
@@ -2855,8 +3729,10 @@ function Slider:_mountValue(host)
 	local w = self._window
 	local t = w.Tokens
 	self._valueBox = Create.New("TextBox", {
-		Size = UDim2.fromOffset(72, 24),
-		Position = UDim2.new(1, 0, 0, -t:Get("ControlHeight") + (self.Description and -5 or 2)),
+		Size = UDim2.fromOffset(if self.Compact then 92 else 72, 24),
+		Position = if self.Compact
+			then UDim2.new(1, 0, 0, 0)
+			else UDim2.new(1, 0, 0, -t:Get("ControlHeight") + (self.Description and -5 or 2)),
 		AnchorPoint = Vector2.new(1, 0),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -2970,10 +3846,34 @@ function Slider:_mountValue(host)
 			end
 		end)
 	end))
-	if self.ValueInput then
+	if self.ValueInput or self.AllowRightClickInput then
 		self._janitor:Add(self._valueBox.FocusLost:Connect(function()
-			self:SetValue(self._valueBox.Text)
+			local parsed = self:_parseInput(self._valueBox.Text)
+			if parsed == nil then
+				self:_render(self:GetValue())
+			else
+				self:SetValue(parsed)
+			end
+			if not self.ValueInput then
+				self._valueBox.TextEditable = false
+			end
 		end))
+	end
+	if self.AllowRightClickInput then
+		self._janitor:Add(self._valueBox.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton2 or self:IsDisabled() then
+				return
+			end
+			self._valueBox.TextEditable = true
+			self._valueBox:CaptureFocus()
+			self._valueBox.CursorPosition = #self._valueBox.Text + 1
+		end))
+	end
+end
+function Slider:_applyDisabled()
+	Base._applyDisabled(self)
+	if self._valueBox then
+		self._valueBox.TextEditable = not self._disabled and self.ValueInput
 	end
 end
 function Slider:_render(v)
@@ -2993,7 +3893,9 @@ function Slider:_render(v)
 end
 function Slider:_applyValueTokens()
 	if self._track then
-		self._track.Size = UDim2.new(1, -4, 0, self._window.Tokens:Get("SliderTrack"))
+		local leftInset = if self.IconFrom then 20 else 2
+		local rightInset = if self.IconTo then 20 else 2
+		self._track.Size = UDim2.new(1, -leftInset - rightInset, 0, self._window.Tokens:Get("SliderTrack"))
 		local n = self._window.Tokens:Get("SliderKnob")
 		self._knob.Size = UDim2.fromOffset(n, n)
 		self._valueBox.TextSize = self._window.Tokens:Get("FontSmall")
@@ -3018,6 +3920,16 @@ end
 function Slider:SetStep(v)
 	self.Step = math.max(0.000001, v)
 	self:SetValue(self:GetValue(), true)
+	return self
+end
+function Slider:SetPrefix(value)
+	self.Prefix = tostring(value or "")
+	self:_render(self:GetValue())
+	return self
+end
+function Slider:SetSuffix(value)
+	self.Suffix = tostring(value or "")
+	self:_render(self:GetValue())
 	return self
 end
 return Slider
@@ -3094,7 +4006,7 @@ function Status:_mountValue(host)
 	})
 	w:_bind(self._valueLabel, { TextColor3 = "TextSecondary" })
 	self:SetStatus(self.Status)
-	if self.Pulse and w.Motion.Enabled then
+	if self.Pulse and w.Motion:IsEnabled("Controls") then
 		local tw = w.Motion:Tween(
 			self._dot,
 			TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
@@ -3134,18 +4046,26 @@ local TextField = setmetatable({}, { __index = Base })
 TextField.__index = TextField
 function TextField.new(section, options)
 	local self = setmetatable({}, TextField)
+	local default = options.Default
+	if default == nil then
+		default = if options.Numeric == true then 0 else ""
+	end
 	self.Placeholder = options.Placeholder or ""
 	self.Numeric = options.Numeric == true
 	self.MaxLength = options.MaxLength
 	self.Multiline = options.Multiline == true
 	self.Height = math.max(34, tonumber(options.Height) or (self.Multiline and 110 or 0))
-	self.ClearOnFocus = options.ClearOnFocus == true
-	self.Validate = options.Validate
-	self.CommitOn = options.CommitOn or "FocusLost"
+	self.ClearOnFocus = options.ClearOnFocus == true or options.ClearTextOnFocus == true
+	self.ClearTextOnBlur = options.ClearTextOnBlur == true
+	self.AllowEmpty = options.AllowEmpty ~= false
+	self.EmptyReset = if options.EmptyReset ~= nil then options.EmptyReset else default
+	self.Validate = options.Validate or options.VerifyValue
+	self.CommitOn = options.CommitOn
+		or if options.Finished == true then "Enter" elseif options.Finished == false then "Change" else "FocusLost"
 	self._error = nil
 	Base.init(self, section, "Input", options, {
 		Stateful = true,
-		Default = options.Default or (self.Numeric and 0 or ""),
+		Default = default,
 		Adaptive = true,
 		Layout = if self.Multiline then "Stacked" else nil,
 	})
@@ -3184,7 +4104,9 @@ function TextField:_mountValue(host)
 	w:_bind(self._box, { BackgroundColor3 = "ControlInset", TextColor3 = "Text", PlaceholderColor3 = "TextTertiary" })
 	if self.CommitOn == "Change" then
 		self._janitor:Add(self._box:GetPropertyChangedSignal("Text"):Connect(function()
-			self:_commit()
+			if not self._suppressCommit then
+				self:_commit()
+			end
 		end))
 	end
 	self._janitor:Add(self._box.Focused:Connect(function()
@@ -3202,12 +4124,27 @@ function TextField:_mountValue(host)
 		if self.CommitOn == "FocusLost" or (self.CommitOn == "Enter" and enter) then
 			self:_commit()
 		end
+		if self.ClearTextOnBlur then
+			self._suppressCommit = true
+			self._box.Text = ""
+			self._suppressCommit = false
+		end
 	end))
 end
 function TextField:_commit()
 	local text = self._box.Text
 	if self.MaxLength and #text > self.MaxLength then
 		text = string.sub(text, 1, self.MaxLength)
+		self._box.Text = text
+	end
+	if text == "" then
+		if self.AllowEmpty then
+			self:SetError(nil)
+			self:SetValue("")
+			return
+		end
+		local reset = self.EmptyReset
+		text = tostring(if reset == nil then (self.Numeric and 0 or "") else reset)
 		self._box.Text = text
 	end
 	local value = if self.Numeric then tonumber(text) else text
@@ -3251,7 +4188,20 @@ function TextField:Blur()
 	return self
 end
 function TextField:Clear()
-	return self:SetValue(self.Numeric and 0 or "")
+	if self.AllowEmpty then
+		return self:SetValue("")
+	end
+	return self:SetValue(self.EmptyReset)
+end
+function TextField:SetAllowEmpty(enabled, emptyReset)
+	self.AllowEmpty = enabled ~= false
+	if emptyReset ~= nil then
+		self.EmptyReset = emptyReset
+	end
+	if not self.AllowEmpty and self:GetValue() == "" then
+		self:SetValue(self.EmptyReset)
+	end
+	return self
 end
 function TextField:SetError(text)
 	self._error = text
@@ -3285,6 +4235,14 @@ local Base = __require("controls/Base")
 local Icon = __require("primitives/Icon")
 local Toggle = setmetatable({}, { __index = Base })
 Toggle.__index = Toggle
+function Toggle:AddKeybind(options)
+	options = table.clone(options or {})
+	options.AttachTo = self
+	if options.SyncToggle == nil then
+		options.SyncToggle = true
+	end
+	return __require("controls/Keybind").new(self._section, options)
+end
 function Toggle.new(section, options)
 	local self = setmetatable({}, Toggle)
 	self.Style = options.Style or "Switch"
@@ -3369,6 +4327,363 @@ return Toggle
 
 end
 
+__modules["controls/Video"] = function()
+--!nonstrict
+local Create = __require("runtime/Create")
+local Base = __require("controls/Base")
+local Video = setmetatable({}, { __index = Base })
+Video.__index = Video
+
+function Video.new(section, options)
+	options = options or {}
+	local self = setmetatable({}, Video)
+	self.Video = options.Video or ""
+	self.Looped = options.Looped == true
+	self.Playing = options.Playing == true
+	self.Volume = math.clamp(tonumber(options.Volume) or 0.5, 0, 1)
+	self.Height = math.max(80, tonumber(options.Height) or 180)
+	Base.init(self, section, "Video", options, { Stateful = false, Persist = false, Layout = "Stacked" })
+	return Base.finish(self)
+end
+
+function Video:_measure()
+	local t = self._window.Tokens
+	return t:Get("ControlHeight") + self.Height + (self.Description and 12 or 0) + 10
+end
+
+function Video:_mountValue(host)
+	local w = self._window
+	self._video = Create.New("VideoFrame", {
+		Size = UDim2.new(1, 0, 0, self.Height),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		Video = self.Video,
+		Looped = self.Looped,
+		Playing = self.Playing,
+		Volume = self.Volume,
+		Parent = host,
+	})
+	Create.New("UICorner", {
+		CornerRadius = UDim.new(0, w.Tokens:Get("FieldRadius")),
+		Parent = self._video,
+	})
+	local stroke = Create.New("UIStroke", {
+		Thickness = 1,
+		Transparency = 0.5,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = self._video,
+	})
+	w:_bind(self._video, { BackgroundColor3 = "ControlInset" })
+	w:_bind(stroke, { Color = "BorderSubtle" })
+	self._janitor:Add(self._video.InputBegan:Connect(function(input)
+		if
+			not self:IsDisabled()
+			and (
+				input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+			)
+		then
+			self:SetPlaying(not self._video.Playing)
+		end
+	end))
+end
+
+function Video:SetVideo(value)
+	self.Video = value or ""
+	if self._video then
+		self._video.Video = self.Video
+	end
+	return self
+end
+
+function Video:SetLooped(looped)
+	self.Looped = looped == true
+	if self._video then
+		self._video.Looped = self.Looped
+	end
+	return self
+end
+
+function Video:SetPlaying(playing)
+	self.Playing = playing == true
+	if self._video then
+		self._video.Playing = self.Playing
+	end
+	return self
+end
+
+function Video:SetVolume(volume)
+	self.Volume = math.clamp(tonumber(volume) or self.Volume, 0, 1)
+	if self._video then
+		self._video.Volume = self.Volume
+	end
+	return self
+end
+
+function Video:Play()
+	return self:SetPlaying(true)
+end
+
+function Video:Pause()
+	return self:SetPlaying(false)
+end
+
+function Video:SetHeight(height)
+	self.Height = math.max(80, tonumber(height) or self.Height)
+	if self._mounted then
+		self:_applyTokens()
+	end
+	return self
+end
+
+function Video:_applyValueTokens()
+	if self._valueHost then
+		self._valueHost.Size = UDim2.new(1, -self._window.Tokens:Get("ControlPadding") * 2, 0, self.Height)
+	end
+	if self._video then
+		self._video.Size = UDim2.new(1, 0, 0, self.Height)
+	end
+end
+
+return Video
+
+end
+
+__modules["controls/Viewport"] = function()
+--!nonstrict
+local Create = __require("runtime/Create")
+local Base = __require("controls/Base")
+local Viewport = setmetatable({}, { __index = Base })
+Viewport.__index = Viewport
+
+local function bounds(object)
+	if object:IsA("Model") then
+		local ok, cf, size = pcall(object.GetBoundingBox, object)
+		if ok then
+			return cf, size
+		end
+	end
+	if object:IsA("BasePart") then
+		return object.CFrame, object.Size
+	end
+	return CFrame.new(), Vector3.new(4, 4, 4)
+end
+
+function Viewport.new(section, options)
+	options = options or {}
+	if typeof(options.Object) ~= "Instance" then
+		error("[BobloUI] AddViewport requires Object = Instance.", 3)
+	end
+	if options.Camera ~= nil and (typeof(options.Camera) ~= "Instance" or not options.Camera:IsA("Camera")) then
+		error("[BobloUI] AddViewport Camera must be a Camera instance.", 3)
+	end
+	local self = setmetatable({}, Viewport)
+	self.Object = options.Object
+	self.Clone = options.Clone ~= false
+	self.DestroyObject = options.DestroyObject == true
+	self.Camera = options.Camera
+	self.Interactive = options.Interactive == true
+	self.AutoFocus = options.AutoFocus ~= false
+	self.Height = math.max(80, tonumber(options.Height) or 200)
+	self._yaw = 35
+	self._pitch = -18
+	self._distance = 8
+	Base.init(self, section, "Viewport", options, { Stateful = false, Persist = false, Layout = "Stacked" })
+	return Base.finish(self)
+end
+
+function Viewport:_measure()
+	local t = self._window.Tokens
+	return t:Get("ControlHeight") + self.Height + (self.Description and 12 or 0) + 10
+end
+
+function Viewport:_mountValue(host)
+	local w = self._window
+	local t = w.Tokens
+	self._viewport = Create.New("ViewportFrame", {
+		Size = UDim2.new(1, 0, 0, self.Height),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		Ambient = Color3.fromRGB(160, 160, 160),
+		LightColor = Color3.new(1, 1, 1),
+		LightDirection = Vector3.new(-1, -1, -1),
+		Parent = host,
+	})
+	Create.New("UICorner", { CornerRadius = UDim.new(0, t:Get("FieldRadius")), Parent = self._viewport })
+	local stroke = Create.New("UIStroke", {
+		Thickness = 1,
+		Transparency = 0.5,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = self._viewport,
+	})
+	w:_bind(self._viewport, { BackgroundColor3 = "ControlInset" })
+	w:_bind(stroke, { Color = "BorderSubtle" })
+	self._world = Create.New("WorldModel", { Parent = self._viewport })
+	self._cameraOwned = self.Camera == nil
+	self._cameraOriginalParent = self.Camera and self.Camera.Parent or nil
+	self._camera = self.Camera or Instance.new("Camera")
+	self._camera.Parent = self._viewport
+	self._viewport.CurrentCamera = self._camera
+	self:_setWorldObject(self.Object)
+	if self.AutoFocus then
+		self:Focus()
+	end
+	self._janitor:Add(self._viewport.InputBegan:Connect(function(input)
+		if not self.Interactive or self:IsDisabled() then
+			return
+		end
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+		local start = input.Position
+		local yaw, pitch = self._yaw, self._pitch
+		w.Input:CapturePointer(self, input, function(move)
+			local delta = move.Position - start
+			self._yaw = yaw - delta.X * 0.35
+			self._pitch = math.clamp(pitch - delta.Y * 0.25, -80, 80)
+			self:_updateCamera()
+		end, function()
+			if self.Callback then
+				pcall(self.Callback, self)
+			end
+		end)
+	end))
+	self._janitor:Add(self._viewport.InputChanged:Connect(function(input)
+		if self.Interactive and input.UserInputType == Enum.UserInputType.MouseWheel then
+			self._distance = math.clamp(self._distance - input.Position.Z, 1.5, 80)
+			self:_updateCamera()
+		end
+	end))
+end
+
+function Viewport:_releaseRenderObject()
+	if self._renderObject then
+		if self.Clone or self.DestroyObject then
+			self._renderObject:Destroy()
+		else
+			self._renderObject.Parent = self._objectOriginalParent
+		end
+		self._renderObject = nil
+	end
+	self._objectOriginalParent = nil
+end
+
+function Viewport:_setWorldObject(object, clone)
+	self:_releaseRenderObject()
+	if clone ~= nil then
+		self.Clone = clone == true
+	end
+	self.Object = object
+	self._objectOriginalParent = if self.Clone then nil else object.Parent
+	self._renderObject = if self.Clone then object:Clone() else object
+	self._renderObject.Parent = self._world
+end
+
+function Viewport:_updateCamera()
+	if not self._camera then
+		return
+	end
+	local focus = self._focus or Vector3.new()
+	local rotation = CFrame.Angles(math.rad(self._pitch), math.rad(self._yaw), 0)
+	local offset = rotation:VectorToWorldSpace(Vector3.new(0, 0, self._distance))
+	self._camera.CFrame = CFrame.lookAt(focus + offset, focus)
+end
+
+function Viewport:Focus()
+	if not self._renderObject then
+		return self
+	end
+	local cf, size = bounds(self._renderObject)
+	self._focus = cf.Position
+	local radius = math.max(size.X, size.Y, size.Z) * 0.5
+	local fov = math.rad((self._camera and self._camera.FieldOfView or 40) * 0.5)
+	self._distance = math.max(1.5, radius / math.max(0.1, math.tan(fov)) * 1.25)
+	self:_updateCamera()
+	return self
+end
+
+function Viewport:SetObject(object, clone)
+	if typeof(object) ~= "Instance" then
+		error("[BobloUI] Viewport:SetObject expects Instance.", 2)
+	end
+	if self._world then
+		self:_setWorldObject(object, clone)
+		if self.AutoFocus then
+			self:Focus()
+		end
+	else
+		self.Object = object
+		if clone ~= nil then
+			self.Clone = clone == true
+		end
+	end
+	return self
+end
+
+function Viewport:SetCamera(camera)
+	if typeof(camera) ~= "Instance" or not camera:IsA("Camera") then
+		error("[BobloUI] Viewport:SetCamera expects Camera.", 2)
+	end
+	if self._camera then
+		if self._cameraOwned then
+			self._camera:Destroy()
+		else
+			self._camera.Parent = self._cameraOriginalParent
+		end
+	end
+	self.Camera = camera
+	self._cameraOwned = false
+	self._cameraOriginalParent = camera.Parent
+	self._camera = camera
+	if self._viewport then
+		camera.Parent = self._viewport
+		self._viewport.CurrentCamera = camera
+	end
+	return self
+end
+
+function Viewport:SetInteractive(interactive)
+	self.Interactive = interactive == true
+	return self
+end
+
+function Viewport:SetHeight(height)
+	self.Height = math.max(80, tonumber(height) or self.Height)
+	if self._mounted then
+		self:_applyTokens()
+	end
+	return self
+end
+
+function Viewport:_applyValueTokens()
+	if self._valueHost then
+		self._valueHost.Size = UDim2.new(1, -self._window.Tokens:Get("ControlPadding") * 2, 0, self.Height)
+	end
+	if self._viewport then
+		self._viewport.Size = UDim2.new(1, 0, 0, self.Height)
+	end
+end
+
+function Viewport:Destroy()
+	self:_releaseRenderObject()
+	if self._camera then
+		if self._cameraOwned then
+			self._camera:Destroy()
+		else
+			self._camera.Parent = self._cameraOriginalParent
+		end
+		self._camera = nil
+	end
+	Base.Destroy(self)
+end
+
+return Viewport
+
+end
+
 __modules["init"] = function()
 --!nonstrict
 -- BobloUI public entry. All higher-level services are wired here by injection.
@@ -3403,6 +4718,8 @@ local Navigation = __require("services/Navigation")
 local Loading = __require("services/Loading")
 local HUD = __require("services/HUD")
 local Cursor = __require("services/Cursor")
+local Overlays = __require("services/Overlays")
+local ThemeManager = __require("services/ThemeManager")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
@@ -3484,6 +4801,8 @@ local WINDOW_OPTIONS = {
 	"ToggleUIKeybind",
 	"ShowText",
 	"ConfigFolder",
+	"ThemeFolder",
+	"AutoLoadTheme",
 	"AutoLoad",
 	"ReducedMotion",
 	"HighContrast",
@@ -3495,6 +4814,26 @@ local WINDOW_OPTIONS = {
 	"Sounds",
 	"OnUnload",
 	"SidebarHidden",
+	"SidebarWidth",
+	"EnableSidebarResize",
+	"Compact",
+	"DisableSearch",
+	"SearchbarSize",
+	"GlobalSearch",
+	"ShowMobileButtons",
+	"MobileButtonsSide",
+	"EnableCompacting",
+	"DisableCompactingSnap",
+	"SidebarCompacted",
+	"MinContainerWidth",
+	"MinSidebarWidth",
+	"SidebarCompactWidth",
+	"SidebarCollapseThreshold",
+	"CompactWidthActivation",
+	"TabSwipeOffset",
+	"TabSwipeFrom",
+	"Font",
+	"Animations",
 	"CornerRadius",
 	"FooterHeight",
 	"FooterText",
@@ -3504,6 +4843,7 @@ local WINDOW_OPTIONS = {
 	"RestoreButton",
 	"TabTransition",
 	"WindowAnimation",
+	"TabTransitionTime",
 	"NotificationPosition",
 	"Watermark",
 	"KeybindHUD",
@@ -3553,14 +4893,19 @@ function BobloUI:CreateWindow(options)
 	local janitor = Janitor.new(`Window[{id}]`)
 	local device = Device.new()
 	janitor:Add(device)
-	local tokens = Tokens.new(options.Density or "Comfortable", device.Class)
+	local tokens = Tokens.new(options.Density or (options.Compact and "Compact") or "Comfortable", device.Class)
 	janitor:Add(tokens)
 	local theme = Theme.new({
 		Palettes = { Dark = Dark, Light = Light },
 		Accent = options.Accent,
 	})
 	janitor:Add(theme)
-	theme:Set(normalizeBundledTheme(options.Theme or "Dark", theme))
+	local requestedTheme = options.Theme
+	local initialTheme = normalizeBundledTheme(requestedTheme or "Dark", theme)
+	if not table.find({ "Dark", "Light" }, initialTheme) then
+		initialTheme = "Dark"
+	end
+	theme:Set(initialTheme)
 	if options.HighContrast then
 		theme:SetHighContrast(true)
 	end
@@ -3739,6 +5084,12 @@ function BobloUI:CreateWindow(options)
 	window.Input = input
 	window.Motion = motion
 	window.Locale = locale
+	if options.Font then
+		window:SetFont(options.Font)
+	end
+	if options.Animations then
+		window:SetAnimations(options.Animations)
+	end
 
 	local favorites = Favorites.new(registry)
 	janitor:Add(favorites)
@@ -3782,6 +5133,26 @@ function BobloUI:CreateWindow(options)
 	local cursor = Cursor.new(window)
 	janitor:Add(cursor)
 	window.Cursor = cursor
+	local overlays = Overlays.new(window)
+	janitor:Add(overlays)
+	window.Overlays = overlays
+	local themeManager = ThemeManager.new(window, options.ThemeFolder or options.ConfigFolder or id)
+	janitor:Add(themeManager)
+	window.ThemeManager = themeManager
+	if
+		requestedTheme
+		and requestedTheme ~= "Dark"
+		and requestedTheme ~= "Light"
+		and requestedTheme ~= "Midnight"
+		and requestedTheme ~= "OLED"
+	then
+		local loaded, loadError = themeManager:Load(requestedTheme)
+		if not loaded then
+			warn(`[BobloUI] custom theme "{requestedTheme}" could not be loaded: {loadError}`)
+		end
+	elseif requestedTheme == nil and options.AutoLoadTheme ~= false and themeManager:GetDefault() then
+		themeManager:LoadDefault()
+	end
 	local settings = nil
 	if options.Settings ~= false then
 		settings = Settings.new(window, options)
@@ -3815,6 +5186,33 @@ function BobloUI:CreateWindow(options)
 	function window:RegisterTheme(name, palette)
 		theme:Register(name, palette)
 		return self
+	end
+	function window:SaveCustomTheme(name, palette)
+		return themeManager:SaveCustomTheme(name, palette)
+	end
+	function window:DeleteCustomTheme(name)
+		return themeManager:DeleteCustomTheme(name)
+	end
+	function window:ReloadCustomThemes()
+		return themeManager:ReloadCustomThemes()
+	end
+	function window:SetThemeFolder(folder)
+		return themeManager:SetFolder(folder)
+	end
+	function window:ListCustomThemes()
+		return themeManager:ListCustomThemes()
+	end
+	function window:LoadCustomTheme(name)
+		return themeManager:Load(name)
+	end
+	function window:SetDefaultTheme(name)
+		return themeManager:SetDefault(name)
+	end
+	function window:GetDefaultTheme()
+		return themeManager:GetDefault()
+	end
+	function window:LoadDefaultTheme()
+		return themeManager:LoadDefault()
 	end
 	function window:SetDensity(density)
 		tokens:SetDensity(density)
@@ -3925,6 +5323,24 @@ function BobloUI:CreateWindow(options)
 	function window:SetNotificationPosition(position)
 		notify:SetPosition(position)
 		return self
+	end
+	function window:AddDraggableLabel(...)
+		return overlays:AddLabel(...)
+	end
+	function window:AddDraggableButton(...)
+		return overlays:AddButton(...)
+	end
+	function window:AddDraggableMenu(...)
+		return overlays:AddMenu(...)
+	end
+	function window:AddDialog(id, dialogOptions)
+		if type(id) == "table" then
+			dialogOptions = id
+		else
+			dialogOptions = table.clone(dialogOptions or {})
+			dialogOptions.Id = id
+		end
+		return dialog:Custom(dialogOptions)
 	end
 	function window:OpenSearch(query)
 		palette:Open(query or "", "search")
@@ -4325,6 +5741,12 @@ end
 local function eventKey(i)
 	return if i.KeyCode ~= Enum.KeyCode.Unknown then i.KeyCode else i.UserInputType
 end
+local MODIFIER_KEYS = {
+	Ctrl = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
+	Shift = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift },
+	Alt = { Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt },
+	Meta = { Enum.KeyCode.LeftMeta, Enum.KeyCode.RightMeta },
+}
 function Input.new()
 	local self = setmetatable({
 		Began = Signal.new("Input.Began"),
@@ -4489,8 +5911,38 @@ function Input:CaptureNextKey(callback, onCancel)
 		end
 	end
 end
-function Input:BindKey(id, key, mode, callback)
+function Input:_modifierDown(name)
+	local keys = MODIFIER_KEYS[name]
+	if not keys then
+		return false
+	end
+	for _, key in keys do
+		if UserInputService:IsKeyDown(key) then
+			return true
+		end
+	end
+	return false
+end
+function Input:_modifiersMatch(required, exact)
+	local wanted = {}
+	for _, name in required or {} do
+		wanted[name] = true
+		if not self:_modifierDown(name) then
+			return false
+		end
+	end
+	if exact then
+		for name in MODIFIER_KEYS do
+			if not wanted[name] and self:_modifierDown(name) then
+				return false
+			end
+		end
+	end
+	return true
+end
+function Input:BindKey(id, key, mode, callback, options)
 	mode = mode or "Toggle"
+	options = options or {}
 	local handle = {
 		Id = id,
 		Key = key,
@@ -4500,8 +5952,14 @@ function Input:BindKey(id, key, mode, callback)
 		Active = mode == "Always",
 		_toggle = false,
 		_input = self,
+		Modifiers = options.Modifiers or {},
+		ExactModifiers = options.ExactModifiers == true,
+		ModeHandler = options.ModeHandler,
 	}
-	function handle:_press()
+	function handle:_press(force)
+		if not force and not self._input:_modifiersMatch(self.Modifiers, self.ExactModifiers) then
+			return
+		end
 		if self.Mode == "Hold" then
 			self.Active = true
 			self.Callback(true)
@@ -4512,13 +5970,52 @@ function Input:BindKey(id, key, mode, callback)
 		elseif self.Mode == "Always" then
 			self.Active = true
 			self.Callback(true)
+		elseif self.ModeHandler then
+			local handler = self.ModeHandler
+			local result
+			if type(handler) == "function" then
+				result = handler("Press", self.Active, self)
+			elseif type(handler) == "table" and type(handler.Press) == "function" then
+				result = handler.Press(self.Active, self)
+			end
+			if result ~= nil then
+				self.Active = result == true
+			end
+			self.Callback(self.Active)
 		end
 	end
 	function handle:_release()
 		if self.Mode == "Hold" and self.Active then
 			self.Active = false
 			self.Callback(false)
+		elseif self.ModeHandler then
+			local handler = self.ModeHandler
+			local result
+			if type(handler) == "function" then
+				result = handler("Release", self.Active, self)
+			elseif type(handler) == "table" and type(handler.Release) == "function" then
+				result = handler.Release(self.Active, self)
+			end
+			if result ~= nil then
+				self.Active = result == true
+				self.Callback(self.Active)
+			end
 		end
+	end
+	function handle:SetActive(active, fire)
+		self.Active = active == true
+		self._toggle = self.Active
+		if fire ~= false then
+			self.Callback(self.Active)
+		end
+		return self
+	end
+	function handle:Trigger()
+		self:_press(true)
+		if self.Mode == "Hold" then
+			self:_release()
+		end
+		return self
 	end
 	function handle:Destroy()
 		local list = self._input._keybinds[self.Key]
@@ -4842,10 +6339,12 @@ local Janitor = __require("runtime/Janitor")
 local Motion = {}
 Motion.__index = Motion
 function Motion.new()
-	return setmetatable(
-		{ Enabled = true, _active = setmetatable({}, { __mode = "k" }), _janitor = Janitor.new("Motion") },
-		Motion
-	)
+	return setmetatable({
+		Enabled = true,
+		_categories = { Window = true, Tabs = true, Controls = true },
+		_active = setmetatable({}, { __mode = "k" }),
+		_janitor = Janitor.new("Motion"),
+	}, Motion)
 end
 Motion.Presets = {
 	Fast = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -4854,15 +6353,26 @@ Motion.Presets = {
 }
 function Motion:SetEnabled(v)
 	self.Enabled = v == true
+	return self
 end
-function Motion:Tween(instance, info, props)
+function Motion:SetCategory(category, enabled)
+	if self._categories[category] == nil then
+		error(`[BobloUI] unknown motion category "{category}".`, 2)
+	end
+	self._categories[category] = enabled ~= false
+	return self
+end
+function Motion:IsEnabled(category)
+	return self.Enabled and (category == nil or self._categories[category] ~= false)
+end
+function Motion:Tween(instance, info, props, category)
 	local old = self._active[instance]
 	if old then
 		pcall(function()
 			old:Cancel()
 		end)
 	end
-	if not self.Enabled then
+	if not self:IsEnabled(category or "Controls") then
 		for k, v in props do
 			instance[k] = v
 		end
@@ -5571,6 +7081,17 @@ function Theme:Register(name: string, palette)
 		self:_resolve()
 		self:_apply()
 	end
+end
+function Theme:GetRegistered(name)
+	local palette = self._palettes[name]
+	return palette and table.clone(palette) or nil
+end
+function Theme:Unregister(name)
+	if name == self._name then
+		error("[BobloUI] cannot unregister the active theme.", 2)
+	end
+	self._palettes[name] = nil
+	return self
 end
 
 function Theme:List(): { string }
@@ -10949,8 +12470,12 @@ local Sheet = {}
 function Sheet.open(window, height, options)
 	options = options or {}
 	local requestedHeight = height
-	local handle =
-		window.Layers:Push({ Scrim = true, ScrimTransparency = 0.56, Modal = false, OnDismiss = options.OnDismiss })
+	local handle = window.Layers:Push({
+		Scrim = true,
+		ScrimTransparency = 0.56,
+		Modal = options.Modal == true,
+		OnDismiss = options.OnDismiss,
+	})
 	local function metrics()
 		local safePos, safeSize = window.Device:SafeArea()
 		local keyboard = window.Device.KeyboardHeight or 0
@@ -11212,6 +12737,87 @@ function Create.Scale(scale: number): UIScale
 end
 
 return Create
+
+end
+
+__modules["runtime/Dependency"] = function()
+--!nonstrict
+-- Shared reactive VisibleWhen / EnabledWhen evaluator for controls and containers.
+local Dependency = {}
+
+local function updateRegistry(owner, ids, requirement)
+	if owner.Id and owner._window and owner._window.Registry then
+		owner._window.Registry:Update(owner, {
+			DependencyIds = ids,
+			Requirement = requirement,
+		})
+	end
+end
+
+function Dependency.Bind(owner, spec, kind)
+	if spec == nil then
+		return
+	end
+	local window = owner._window
+	local janitor = owner._janitor
+	local slot = `container_dependency_{kind}`
+	local function apply(result)
+		local enabled = result == true
+		if kind == "visible" then
+			owner._dependencyVisible = enabled
+			owner:_applyContainerState()
+		else
+			owner._dependencyEnabled = enabled
+			owner:_applyContainerState()
+		end
+	end
+	if type(spec) == "table" then
+		local ids = {}
+		local requirements = {}
+		for id, wanted in spec do
+			table.insert(ids, id)
+			table.insert(requirements, id .. " = " .. tostring(wanted))
+		end
+		updateRegistry(owner, ids, table.concat(requirements, ", "))
+		local function evaluate()
+			for id, wanted in spec do
+				if window.State:Get(id) ~= wanted then
+					apply(false)
+					return
+				end
+			end
+			apply(true)
+		end
+		janitor:Add(window.State:WatchMany(ids, evaluate), nil, slot)
+		evaluate()
+	elseif type(spec) == "function" then
+		local function retrack()
+			janitor:Remove(slot)
+			local ids, result = window.State:Track(spec)
+			updateRegistry(owner, ids, #ids > 0 and table.concat(ids, ", ") or nil)
+			if #ids == 0 then
+				warn(
+					`[BobloUI] {owner.Type or "container"} "{owner.Id or owner.Title or "anonymous"}" dependency tracked 0 State:Get calls. The predicate must read at least one value from this Store.`
+				)
+			end
+			local unsubscribe = {}
+			for _, id in ids do
+				table.insert(unsubscribe, window.State:Watch(id, retrack, owner))
+			end
+			janitor:Add(function()
+				for _, callback in unsubscribe do
+					callback()
+				end
+			end, nil, slot)
+			apply(result == true)
+		end
+		retrack()
+	else
+		error(`[BobloUI] {kind} dependency must be a table or function.`, 3)
+	end
+end
+
+return Dependency
 
 end
 
@@ -11706,7 +13312,16 @@ return {
 	["Components"] = {
 		["Button"] = {
 			["Method"] = "AddButton",
-			["Options"] = { ["Text"] = "string?", ["Variant"] = "string?", ["Confirm"] = "string?" },
+			["Options"] = {
+				["Text"] = "string?",
+				["Variant"] = "string?",
+				["Confirm"] = "string?",
+				["Risky"] = "boolean?",
+				["DoubleClick"] = "boolean?",
+				["DoubleClickWindow"] = "number?",
+				["SubButtons"] = "table?",
+				["Actions"] = "table?",
+			},
 			["Required"] = { "Title" },
 			["Stateful"] = false,
 		},
@@ -11724,10 +13339,16 @@ return {
 				["Default"] = "number?",
 				["Step"] = "number?",
 				["Precision"] = "number?",
+				["Rounding"] = "number?",
+				["Prefix"] = "string?",
 				["Suffix"] = "string?",
 				["Format"] = "function?",
+				["FormatDisplayValue"] = "function?",
 				["ValueInput"] = "boolean?",
+				["AllowRightClickInput"] = "boolean?",
 				["FloatingValue"] = "boolean?",
+				["Compact"] = "boolean?",
+				["HideMax"] = "boolean?",
 				["IconFrom"] = "string?",
 				["IconTo"] = "string?",
 			},
@@ -11738,14 +13359,29 @@ return {
 			["Method"] = "AddDropdown",
 			["Options"] = {
 				["Options"] = "table?",
+				["Values"] = "table?",
 				["Default"] = "any?",
 				["Multi"] = "boolean?",
+				["MultiValueMode"] = "string?",
+				["Map"] = "boolean?",
+				["ReturnMap"] = "boolean?",
 				["Searchable"] = "boolean?",
 				["AllowNone"] = "boolean?",
+				["AllowNull"] = "boolean?",
 				["Max"] = "number?",
 				["Placeholder"] = "string?",
 				["Style"] = "string?",
 				["Source"] = "any?",
+				["MaxVisibleRows"] = "number?",
+				["MaxVisibleDropdownItems"] = "number?",
+				["DragSelect"] = "boolean?",
+				["DisabledValues"] = "table?",
+				["ValueImages"] = "table?",
+				["Images"] = "table?",
+				["FormatDisplayValue"] = "function?",
+				["FormatListValue"] = "function?",
+				["FormatValue"] = "function?",
+				["FormatOption"] = "function?",
 			},
 			["Required"] = { "Title" },
 			["Stateful"] = true,
@@ -11759,7 +13395,13 @@ return {
 				["MaxLength"] = "number?",
 				["Multiline"] = "boolean?",
 				["ClearOnFocus"] = "boolean?",
+				["ClearTextOnFocus"] = "boolean?",
+				["ClearTextOnBlur"] = "boolean?",
+				["AllowEmpty"] = "boolean?",
+				["EmptyReset"] = "string|number?",
 				["Validate"] = "function?",
+				["VerifyValue"] = "function?",
+				["Finished"] = "boolean?",
 				["CommitOn"] = "string?",
 				["Height"] = "number?",
 			},
@@ -11769,10 +13411,32 @@ return {
 		["Keybind"] = {
 			["Method"] = "AddKeybind",
 			["Options"] = {
-				["Default"] = "EnumItem?",
+				["Default"] = "any?",
 				["Mode"] = "string?",
 				["AllowedModes"] = "table?",
 				["Blacklist"] = "table?",
+				["Blacklisted"] = "table?",
+				["Whitelist"] = "table?",
+				["Whitelisted"] = "table?",
+				["Modifiers"] = "table?",
+				["DefaultModifiers"] = "table?",
+				["ModifierWhitelist"] = "table?",
+				["WhitelistedModifiers"] = "table?",
+				["ModifierBlacklist"] = "table?",
+				["BlacklistModifiers"] = "table?",
+				["BlacklistedModifiers"] = "table?",
+				["ExactModifiers"] = "boolean?",
+				["CustomModes"] = "table?",
+				["Modes"] = "table?",
+				["AttachTo"] = "any?",
+				["SyncToggle"] = "boolean?",
+				["SyncToggleState"] = "boolean?",
+				["WaitForCallback"] = "boolean?",
+				["ChangedCallback"] = "function?",
+				["Clicked"] = "function?",
+				["NoUI"] = "boolean?",
+				["Mobile"] = "boolean?",
+				["MobileText"] = "string?",
 			},
 			["Required"] = { "Title" },
 			["Stateful"] = true,
@@ -11785,11 +13449,23 @@ return {
 		},
 		["Paragraph"] = {
 			["Method"] = "AddParagraph",
-			["Options"] = { ["Content"] = "string?", ["Variant"] = "string?" },
+			["Options"] = {
+				["Content"] = "string?",
+				["Variant"] = "string?",
+				["RichText"] = "boolean?",
+				["DoesWrap"] = "boolean?",
+				["Wrap"] = "boolean?",
+				["Size"] = "number?",
+			},
 			["Required"] = {},
 			["Stateful"] = false,
 		},
-		["Divider"] = { ["Method"] = "AddDivider", ["Options"] = {}, ["Required"] = {}, ["Stateful"] = false },
+		["Divider"] = {
+			["Method"] = "AddDivider",
+			["Options"] = { ["Text"] = "string?", ["Margin"] = "number?", ["MarginTop"] = "number?", ["MarginBottom"] = "number?" },
+			["Required"] = {},
+			["Stateful"] = false,
+		},
 		["Status"] = {
 			["Method"] = "AddStatus",
 			["Options"] = { ["Value"] = "any?", ["Status"] = "string?", ["Pulse"] = "boolean?" },
@@ -11824,8 +13500,60 @@ return {
 		},
 		["Image"] = {
 			["Method"] = "AddImage",
-			["Options"] = { ["Image"] = "string", ["Height"] = "number?", ["Caption"] = "string?", ["ScaleType"] = "EnumItem?" },
+			["Options"] = {
+				["Image"] = "string",
+				["Height"] = "number?",
+				["Caption"] = "string?",
+				["ScaleType"] = "EnumItem?",
+				["Tint"] = "Color3?",
+				["ImageColor3"] = "Color3?",
+				["Transparency"] = "number?",
+				["ImageTransparency"] = "number?",
+				["BackgroundTransparency"] = "number?",
+				["RectOffset"] = "Vector2?",
+				["RectSize"] = "Vector2?",
+				["ImageRectOffset"] = "Vector2?",
+				["ImageRectSize"] = "Vector2?",
+			},
 			["Required"] = { "Image" },
+			["Stateful"] = false,
+		},
+		["Passthrough"] = {
+			["Method"] = "AddPassthrough",
+			["Options"] = {
+				["Instance"] = "Instance",
+				["Height"] = "number?",
+				["Fill"] = "boolean?",
+				["Clone"] = "boolean?",
+				["DestroyInstance"] = "boolean?",
+			},
+			["Required"] = { "Instance" },
+			["Stateful"] = false,
+		},
+		["Viewport"] = {
+			["Method"] = "AddViewport",
+			["Options"] = {
+				["Object"] = "Instance",
+				["Clone"] = "boolean?",
+				["DestroyObject"] = "boolean?",
+				["Camera"] = "Instance?",
+				["Interactive"] = "boolean?",
+				["AutoFocus"] = "boolean?",
+				["Height"] = "number?",
+			},
+			["Required"] = { "Object" },
+			["Stateful"] = false,
+		},
+		["Video"] = {
+			["Method"] = "AddVideo",
+			["Options"] = {
+				["Video"] = "string",
+				["Looped"] = "boolean?",
+				["Playing"] = "boolean?",
+				["Volume"] = "number?",
+				["Height"] = "number?",
+			},
+			["Required"] = { "Video" },
 			["Stateful"] = false,
 		},
 	},
@@ -12191,6 +13919,10 @@ local function matches(value, spec)
 			return true
 		elseif part == "Color3" and typeof(value) == "Color3" then
 			return true
+		elseif part == "Vector2" and typeof(value) == "Vector2" then
+			return true
+		elseif part == "Instance" and typeof(value) == "Instance" then
+			return true
 		elseif part == "EnumItem" and typeof(value) == "EnumItem" then
 			return true
 		end
@@ -12208,8 +13940,8 @@ function Validate.Collect(typeName, options, path)
 	if type(options) ~= "table" then
 		return { `{path}: expected an options table` }
 	end
-	if typeName == "Dropdown" and options.Options == nil and options.Source == nil then
-		table.insert(errors, `{path}: requires either Options or Source`)
+	if typeName == "Dropdown" and options.Options == nil and options.Values == nil and options.Source == nil then
+		table.insert(errors, `{path}: requires Options, Values, or Source`)
 	end
 	local available = optionsFor(spec)
 	local names = {}
@@ -12243,8 +13975,8 @@ function Validate.Control(typeName, options)
 	if type(options) ~= "table" then
 		error(`[BobloUI] {spec.Method} expects an options table.`, 3)
 	end
-	if typeName == "Dropdown" and options.Options == nil and options.Source == nil then
-		error("[BobloUI] AddDropdown requires either Options or Source.", 3)
+	if typeName == "Dropdown" and options.Options == nil and options.Values == nil and options.Source == nil then
+		error("[BobloUI] AddDropdown requires Options, Values, or Source.", 3)
 	end
 	for _, key in spec.Required or {} do
 		if options[key] == nil then
@@ -12289,6 +14021,9 @@ local TAB_KEYS = {
 	Badge = true,
 	Group = true,
 	Visible = true,
+	VisibleWhen = true,
+	EnabledWhen = true,
+	Disabled = true,
 	Locked = true,
 	LockedReason = true,
 	Sections = true,
@@ -12455,6 +14190,9 @@ function Build.Run(window, schema)
 				Span = sd.Span,
 				Layout = sd.Layout,
 				Visible = sd.Visible,
+				VisibleWhen = sd.VisibleWhen,
+				EnabledWhen = sd.EnabledWhen,
+				Disabled = sd.Disabled,
 			})
 			if section.Id then
 				handles[section.Id] = section
@@ -12968,6 +14706,18 @@ function Config:Load(name)
 			if geometry.Locked ~= nil then
 				self._window:SetLocked(geometry.Locked)
 			end
+			if geometry.SidebarWidth and self._window.SetSidebarWidth then
+				self._window:SetSidebarWidth(geometry.SidebarWidth)
+			end
+			if geometry.SidebarHidden ~= nil and self._window.SetSidebarHidden then
+				self._window:SetSidebarHidden(geometry.SidebarHidden)
+			end
+			if geometry.Compact ~= nil and self._window.SetCompact then
+				self._window:SetCompact(geometry.Compact)
+			end
+			if geometry.SidebarCompacted ~= nil and self._window.SetSidebarCompacted then
+				self._window:SetSidebarCompacted(geometry.SidebarCompacted)
+			end
 		end
 	end
 
@@ -13205,14 +14955,20 @@ function Dialog:_measure(text, width)
 	end)
 	return if ok then math.max(18, size.Y) else 36
 end
-function Dialog:_surface(height, onDismiss)
+function Dialog:_surface(height, onDismiss, options)
+	options = options or {}
 	local w = self._window
 	if w.Device.Layout == "Drawer" then
-		local h = Sheet.open(w, height, { OnDismiss = onDismiss })
+		local h = Sheet.open(w, height, { OnDismiss = onDismiss, Modal = options.OutsideClickDismiss ~= true })
 		return h, h.Frame
 	end
 	local safeHeight = math.max(1, math.min(height, math.max(1, w.Device.Viewport.Y - 32)))
-	local h = w.Layers:Push({ Scrim = true, ScrimTransparency = 0.52, Modal = true, OnDismiss = onDismiss })
+	local h = w.Layers:Push({
+		Scrim = true,
+		ScrimTransparency = 0.52,
+		Modal = options.OutsideClickDismiss ~= true,
+		OnDismiss = onDismiss,
+	})
 	local frame = Surface.new(w, {
 		Size = UDim2.fromOffset(self:_width(), safeHeight),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -13229,7 +14985,7 @@ function Dialog:_surface(height, onDismiss)
 	frame.ZIndex = h.Depth * 10 + 3
 	return h, frame
 end
-function Dialog:_title(parent, text, icon, colorToken)
+function Dialog:_title(parent, text, icon, colorToken, titleColor)
 	local w = self._window
 	local iconHost = Create.New("Frame", {
 		Size = UDim2.fromOffset(28, 28),
@@ -13258,7 +15014,11 @@ function Dialog:_title(parent, text, icon, colorToken)
 		Text = text or "",
 		Parent = parent,
 	})
-	w:_bind(title, { TextColor3 = "Text" })
+	if typeof(titleColor) == "Color3" then
+		title.TextColor3 = titleColor
+	else
+		w:_bind(title, { TextColor3 = "Text" })
+	end
 	return title
 end
 function Dialog:_button(parent, text, primary, danger, callback, options)
@@ -13553,25 +15313,55 @@ function Dialog:Custom(options)
 	options = options or {}
 	local w = self._window
 	local j = Janitor.new("Dialog.Custom")
-	local closed = false
+	local handle = { _buttons = {}, _closed = false, _result = nil, Closed = Signal.new("Dialog.Custom.Closed") }
+	j:Add(handle.Closed)
 	local layer, frame
-	local function dismiss()
-		if closed then
+	local function removeOpen()
+		local position = table.find(self._open, handle)
+		if position then
+			table.remove(self._open, position)
+		end
+	end
+	local function dismissed()
+		if handle._closed then
 			return
 		end
-		closed = true
+		handle._closed = true
+		handle.Result = handle._result
+		handle.Closed:Fire(handle._result)
+		removeOpen()
 		j:Destroy()
 	end
-	layer, frame = self:_surface(options.Height or 340, dismiss)
-	j:Add(function()
-		if layer:IsOpen() then
-			layer:Dismiss()
-		end
-	end)
-	self:_title(frame, options.Title or "", options.Icon or "layout-template", "Accent")
+	layer, frame = self:_surface(options.Height or 380, dismissed, options)
+	handle._layer = layer
+	handle._frame = frame
+	handle._title =
+		self:_title(frame, options.Title or "", options.Icon or "layout-template", "Accent", options.TitleColor)
+
+	local descriptionHeight = self:_measure(options.Description or "", self:_width() - 32)
+	local contentTop = if descriptionHeight > 0 then 53 + descriptionHeight else 48
+	handle._description = Create.New("TextLabel", {
+		Size = UDim2.new(1, -32, 0, descriptionHeight),
+		Position = UDim2.fromOffset(16, 45),
+		BackgroundTransparency = 1,
+		Font = w.Fonts.Regular,
+		TextSize = w.Tokens:Get("FontBody"),
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = tostring(options.Description or ""),
+		Visible = descriptionHeight > 0,
+		Parent = frame,
+	})
+	if typeof(options.DescriptionColor) == "Color3" then
+		handle._description.TextColor3 = options.DescriptionColor
+	else
+		w:_bind(handle._description, { TextColor3 = "TextSecondary" })
+	end
+	local footerHeight = 50
 	local content = Create.New("ScrollingFrame", {
-		Size = UDim2.new(1, -32, 1, -96),
-		Position = UDim2.fromOffset(16, 48),
+		Size = UDim2.new(1, -32, 1, -(contentTop + footerHeight)),
+		Position = UDim2.fromOffset(16, contentTop),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -13579,37 +15369,177 @@ function Dialog:Custom(options)
 		ScrollBarThickness = 2,
 		Parent = frame,
 	})
+	w:_bind(content, { ScrollBarImageColor3 = "BorderStrong" })
+	handle._content = content
+	local function reflowDescription(text)
+		local height = self:_measure(text or "", self:_width() - 32)
+		handle._description.Text = tostring(text or "")
+		handle._description.Visible = height > 0
+		handle._description.Size = UDim2.new(1, -32, 0, height)
+		local top = if height > 0 then 53 + height else 48
+		content.Position = UDim2.fromOffset(16, top)
+		content.Size = UDim2.new(1, -32, 1, -(top + footerHeight))
+	end
 	Create.List(w.Tokens:Get("RowGap")).Parent = content
 	local section = DialogSection.new(w, content, j)
-	if options.Build then
-		options.Build(section)
-	end
-	local row = Create.New("Frame", {
+	handle.Section = section
+
+	local footer = Create.New("Frame", {
 		Size = UDim2.new(1, -32, 0, 34),
-		Position = UDim2.new(0, 16, 1, -44),
+		Position = UDim2.new(0, 16, 1, -42),
 		BackgroundTransparency = 1,
 		Parent = frame,
 	})
-	Create.List(7, Enum.FillDirection.Horizontal, { HorizontalAlignment = Enum.HorizontalAlignment.Right }).Parent = row
-	for _, button in options.Buttons or { { Text = "Close" } } do
-		self:_button(row, button.Text or "Close", button.Primary == true, button.Danger == true, function()
-			if button.Callback then
-				button.Callback(section)
+	Create.List(7, Enum.FillDirection.Horizontal, { HorizontalAlignment = Enum.HorizontalAlignment.Right }).Parent =
+		footer
+	handle._footer = footer
+
+	local function refreshButton(entry)
+		if not entry or not entry.Button then
+			return
+		end
+		local unavailable = entry.Disabled or entry.Waiting
+		entry.Button.Active = not unavailable
+		entry.Button.TextTransparency = if unavailable then 0.48 else 0
+		entry.Button.BackgroundTransparency = if unavailable then 0.42 else 0
+	end
+
+	function handle:AddFooterButton(id, spec)
+		if type(id) ~= "string" or id == "" or type(spec) ~= "table" then
+			error("[BobloUI] Dialog:AddFooterButton expects id and options table.", 2)
+		end
+		self:RemoveFooterButton(id)
+		local variant = spec.Variant or (spec.Primary and "Primary") or (spec.Danger and "Destructive") or "Secondary"
+		local primary = variant == "Primary" or variant == "Destructive"
+		local danger = variant == "Destructive" or variant == "Danger"
+		local entry = {
+			Id = id,
+			Spec = spec,
+			Disabled = spec.Disabled == true,
+			Waiting = (tonumber(spec.WaitTime) or 0) > 0,
+		}
+		entry.Button = self._dialog:_button(footer, spec.Title or spec.Text or id, primary, danger, function()
+			if entry.Disabled or entry.Waiting or self._closed then
+				return
 			end
-			if button.Close ~= false then
-				layer:Dismiss()
+			if spec.Callback then
+				local ok, result = xpcall(spec.Callback, debug.traceback, self, section)
+				if not ok then
+					warn(result)
+					return
+				end
+				if result == false then
+					return
+				end
+			end
+			if spec.Close ~= false and options.AutoDismiss ~= false then
+				self:Close(id)
 			end
 		end)
+		entry.Button.LayoutOrder = tonumber(spec.Order) or 0
+		self._buttons[id] = entry
+		refreshButton(entry)
+		local waitTime = math.max(0, tonumber(spec.WaitTime) or 0)
+		if waitTime > 0 then
+			entry.Progress = Create.New("Frame", {
+				Size = UDim2.fromScale(0, 1),
+				BackgroundTransparency = 0.7,
+				BorderSizePixel = 0,
+				Parent = entry.Button,
+			})
+			Create.New("UICorner", {
+				CornerRadius = UDim.new(0, w.Tokens:Get("FieldRadius")),
+				Parent = entry.Progress,
+			})
+			w:_bind(entry.Progress, { BackgroundColor3 = "Accent" })
+			w.Motion:Tween(entry.Progress, TweenInfo.new(waitTime, Enum.EasingStyle.Linear), {
+				Size = UDim2.fromScale(1, 1),
+			})
+			j:Add(task.delay(waitTime, function()
+				if not self._closed and self._buttons[id] == entry then
+					entry.Waiting = false
+					if entry.Progress then
+						entry.Progress:Destroy()
+						entry.Progress = nil
+					end
+					refreshButton(entry)
+				end
+			end))
+		end
+		return self
 	end
-	return {
-		Close = function()
-			layer:Dismiss()
-		end,
-		IsOpen = function()
-			return layer:IsOpen()
-		end,
-		Section = section,
-	}
+	function handle:RemoveFooterButton(id)
+		local entry = self._buttons[id]
+		if entry then
+			self._buttons[id] = nil
+			entry.Button:Destroy()
+		end
+		return self
+	end
+	function handle:SetButtonDisabled(id, disabled)
+		local entry = self._buttons[id]
+		if not entry then
+			return false
+		end
+		entry.Disabled = disabled == true
+		refreshButton(entry)
+		return self
+	end
+	function handle:SetButtonOrder(id, order)
+		local entry = self._buttons[id]
+		if not entry then
+			return false
+		end
+		entry.Button.LayoutOrder = tonumber(order) or 0
+		return self
+	end
+	function handle:SetTitle(text)
+		self._title.Text = tostring(text or "")
+		return self
+	end
+	function handle:SetDescription(text)
+		reflowDescription(text)
+		return self
+	end
+	function handle:Close(result)
+		self._result = result
+		if self._layer:IsOpen() then
+			self._layer:Dismiss()
+		end
+		return self
+	end
+	function handle:Dismiss()
+		return self:Close(nil)
+	end
+	function handle:IsOpen()
+		return not self._closed and self._layer:IsOpen()
+	end
+	function handle:Destroy()
+		return self:Close(nil)
+	end
+	function handle:Await()
+		if self._closed then
+			return self.Result
+		end
+		return self.Closed:Wait()
+	end
+	handle._dialog = self
+
+	local footerButtons = options.FooterButtons
+	if type(footerButtons) == "table" then
+		for id, spec in footerButtons do
+			handle:AddFooterButton(tostring(id), spec)
+		end
+	else
+		for index, spec in options.Buttons or { { Text = "Close" } } do
+			handle:AddFooterButton(spec.Id or `Button{index}`, spec)
+		end
+	end
+	if options.Build then
+		options.Build(section, handle)
+	end
+	table.insert(self._open, handle)
+	return handle
 end
 function Dialog:Destroy()
 	for _, d in table.clone(self._open) do
@@ -13635,6 +15565,12 @@ local ColorPicker = __require("controls/ColorPicker")
 local Paragraph = __require("controls/Paragraph")
 local Divider = __require("controls/Divider")
 local Status = __require("controls/Status")
+local Progress = __require("controls/Progress")
+local Code = __require("controls/Code")
+local Image = __require("controls/Image")
+local Passthrough = __require("controls/Passthrough")
+local Viewport = __require("controls/Viewport")
+local Video = __require("controls/Video")
 local DialogSection = {}
 DialogSection.__index = DialogSection
 function DialogSection.new(window, parent, janitor)
@@ -13704,6 +15640,24 @@ function DialogSection:AddDivider(o)
 end
 function DialogSection:AddStatus(o)
 	return Status.new(self, o)
+end
+function DialogSection:AddProgress(o)
+	return Progress.new(self, o)
+end
+function DialogSection:AddCode(o)
+	return Code.new(self, o)
+end
+function DialogSection:AddImage(o)
+	return Image.new(self, o)
+end
+function DialogSection:AddPassthrough(o)
+	return Passthrough.new(self, o)
+end
+function DialogSection:AddViewport(o)
+	return Viewport.new(self, o)
+end
+function DialogSection:AddVideo(o)
+	return Video.new(self, o)
 end
 function DialogSection:SetCollapsed()
 	return self
@@ -13775,6 +15729,17 @@ local Create = __require("runtime/Create")
 local Janitor = __require("runtime/Janitor")
 local HUD = {}
 HUD.__index = HUD
+local function keyText(value)
+	if type(value) ~= "table" then
+		return tostring(value or "None")
+	end
+	local parts = {}
+	for _, modifier in value.Modifiers or {} do
+		table.insert(parts, tostring(modifier))
+	end
+	table.insert(parts, tostring(value.Key or "None"))
+	return table.concat(parts, " + ")
+end
 function HUD.new(window)
 	local self = setmetatable({
 		_window = window,
@@ -13891,17 +15856,33 @@ function HUD:_refresh()
 			local h = entry.Handle
 			if entry.Type == "Keybind" and h and not h._destroyed then
 				local v = h:GetValue()
-				local key = type(v) == "table" and v.Key or "None"
-				local row = Create.New("TextLabel", {
+				local mobileAction = w.Device.Class == "Phone" and h.Mobile ~= false
+				local row = Create.New(if mobileAction then "TextButton" else "TextLabel", {
 					Size = UDim2.new(1, 0, 0, 20),
-					BackgroundTransparency = 1,
+					BackgroundTransparency = if mobileAction then 0.82 else 1,
+					BorderSizePixel = 0,
+					AutoButtonColor = if mobileAction then false else nil,
 					Font = w.Fonts.Regular,
 					TextSize = w.Tokens:Get("FontSmall"),
 					TextXAlignment = Enum.TextXAlignment.Left,
-					Text = `{h.Title or entry.Id}   [{key}]`,
+					Text = `{h.MobileText or h.Title or entry.Id}   [{keyText(v)}]`,
 					Parent = self._keybind,
 				})
-				w:_bind(row, { TextColor3 = h:IsActive() and "Accent" or "TextSecondary" })
+				w:_bind(row, {
+					TextColor3 = h:IsActive() and "Accent" or "TextSecondary",
+					BackgroundColor3 = "ControlHover",
+				})
+				if mobileAction then
+					Create.New("UICorner", { CornerRadius = UDim.new(0, 6), Parent = row })
+					Create.New("UIPadding", {
+						PaddingLeft = UDim.new(0, 6),
+						PaddingRight = UDim.new(0, 6),
+						Parent = row,
+					})
+					row.MouseButton1Click:Connect(function()
+						h:Trigger()
+					end)
+				end
 			end
 		end
 	end
@@ -14260,6 +16241,9 @@ end
 __modules["services/Loading"] = function()
 --!nonstrict
 local Create = __require("runtime/Create")
+local Janitor = __require("runtime/Janitor")
+local Icon = __require("primitives/Icon")
+local DialogSection = __require("services/DialogSection")
 local Loading = {}
 Loading.__index = Loading
 function Loading.new(window)
@@ -14272,16 +16256,38 @@ function Loading:Show(options)
 		self._handle = nil
 	end
 	local w = self._window
+	local j = Janitor.new("Loading.Handle")
+	local hasContent = options.Build ~= nil or options.Sidebar == true or options.ShowSidebar ~= nil
+	local availableWidth = math.max(240, w.Device.Viewport.X - 32)
+	local panelWidth =
+		math.max(240, math.min(tonumber(options.WindowWidth) or (if hasContent then 620 else 420), availableWidth))
+	local sideBySide = hasContent and panelWidth >= 500
+	local desiredHeight = if not hasContent then 180 elseif sideBySide then 300 else 460
+	local panelHeight = math.min(
+		math.max(180, tonumber(options.WindowHeight) or desiredHeight),
+		math.max(180, w.Device.Viewport.Y - 32)
+	)
+	local mainWidth = if sideBySide
+		then math.clamp(
+			tonumber(options.ContentWidth)
+				or (tonumber(options.SidebarWidth) and panelWidth - tonumber(options.SidebarWidth) - 10)
+				or math.floor(panelWidth * 0.58),
+			240,
+			panelWidth - 150
+		)
+		else panelWidth
+	local initialIcon = options.LoadingIcon or options.Icon
 	local layer = w.Layers:Push({
 		Scrim = true,
 		ScrimTransparency = 0.38,
 		Modal = true,
 		OnDismiss = function()
 			self._handle = nil
+			j:Destroy()
 		end,
 	})
 	local panel = Create.New("Frame", {
-		Size = UDim2.fromOffset(math.min(420, w.Device.Viewport.X - 32), 180),
+		Size = UDim2.fromOffset(panelWidth, panelHeight),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BorderSizePixel = 0,
@@ -14292,8 +16298,8 @@ function Loading:Show(options)
 	w:_bind(panel, { BackgroundColor3 = "SurfaceRaised" })
 	w:_bind(stroke, { Color = "Border" })
 	local title = Create.New("TextLabel", {
-		Size = UDim2.new(1, -32, 0, 24),
-		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.fromOffset(mainWidth - (initialIcon and 64 or 32), 24),
+		Position = UDim2.fromOffset(initialIcon and 48 or 16, 16),
 		BackgroundTransparency = 1,
 		Font = w.Fonts.Bold,
 		TextSize = w.Tokens:Get("FontHeading"),
@@ -14302,8 +16308,17 @@ function Loading:Show(options)
 		Parent = panel,
 	})
 	w:_bind(title, { TextColor3 = "Text" })
+	local loadingIcon = nil
+	if initialIcon then
+		loadingIcon = Icon.new(w, initialIcon, {
+			Size = UDim2.fromOffset(20, 20),
+			Position = UDim2.fromOffset(16, 18),
+			Parent = panel,
+		})
+		Icon.setColor(loadingIcon, w.Theme:Get("Accent"))
+	end
 	local status = Create.New("TextLabel", {
-		Size = UDim2.new(1, -32, 0, 42),
+		Size = UDim2.fromOffset(mainWidth - 32, 20),
 		Position = UDim2.fromOffset(16, 48),
 		BackgroundTransparency = 1,
 		Font = w.Fonts.Regular,
@@ -14311,14 +16326,30 @@ function Loading:Show(options)
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Text = options.Status or "Preparing…",
+		Text = options.Message or options.Status or "Preparing…",
 		Parent = panel,
 	})
 	w:_bind(status, { TextColor3 = "TextSecondary" })
-	local track = Create.New(
-		"Frame",
-		{ Size = UDim2.new(1, -32, 0, 6), Position = UDim2.fromOffset(16, 108), BorderSizePixel = 0, Parent = panel }
-	)
+	local description = Create.New("TextLabel", {
+		Size = UDim2.fromOffset(mainWidth - 32, 30),
+		Position = UDim2.fromOffset(16, 70),
+		BackgroundTransparency = 1,
+		Font = w.Fonts.Regular,
+		TextSize = w.Tokens:Get("FontSmall"),
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = options.Description or "",
+		Visible = options.Description ~= nil and options.Description ~= "",
+		Parent = panel,
+	})
+	w:_bind(description, { TextColor3 = "TextTertiary" })
+	local track = Create.New("Frame", {
+		Size = UDim2.fromOffset(mainWidth - 32, 6),
+		Position = UDim2.fromOffset(16, 108),
+		BorderSizePixel = 0,
+		Parent = panel,
+	})
 	Create.New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
 	w:_bind(track, { BackgroundColor3 = "ControlInset" })
 	local fill = Create.New(
@@ -14328,7 +16359,7 @@ function Loading:Show(options)
 	Create.New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
 	w:_bind(fill, { BackgroundColor3 = "Accent" })
 	local step = Create.New("TextLabel", {
-		Size = UDim2.new(1, -32, 0, 18),
+		Size = UDim2.fromOffset(mainWidth - 32, 18),
 		Position = UDim2.fromOffset(16, 122),
 		BackgroundTransparency = 1,
 		Font = w.Fonts.Regular,
@@ -14339,7 +16370,7 @@ function Loading:Show(options)
 	})
 	w:_bind(step, { TextColor3 = "TextTertiary" })
 	local actions = Create.New("Frame", {
-		Size = UDim2.new(1, -32, 0, 30),
+		Size = UDim2.fromOffset(mainWidth - 32, 30),
 		Position = UDim2.fromOffset(16, 144),
 		BackgroundTransparency = 1,
 		Parent = panel,
@@ -14352,13 +16383,91 @@ function Loading:Show(options)
 		Frame = panel,
 		_title = title,
 		_status = status,
+		_description = description,
 		_fill = fill,
 		_step = step,
 		_actions = actions,
+		_icon = loadingIcon,
+		_janitor = j,
+		_steps = options.Steps or {},
+		_currentStep = tonumber(options.CurrentStep) or 0,
+		_totalSteps = math.max(1, tonumber(options.TotalSteps) or math.max(1, #(options.Steps or {}))),
 		_dismissed = false,
+		_iconSpinToken = 0,
+		_loadingIconTweenTime = math.max(0, tonumber(options.LoadingIconTweenTime) or 0),
+		_loadingIconColor = options.LoadingIconColor,
+		_sideBySide = sideBySide,
+		_mainWidth = mainWidth,
+		_panelWidth = panelWidth,
 	}
+	local function restartIconSpin(handle)
+		handle._iconSpinToken += 1
+		local token = handle._iconSpinToken
+		if not handle._icon then
+			return
+		end
+		handle._icon.Rotation = 0
+		local seconds = handle._loadingIconTweenTime
+		if seconds <= 0 then
+			return
+		end
+		task.spawn(function()
+			while not handle._dismissed and handle._iconSpinToken == token and handle._icon and handle._icon.Parent do
+				handle._icon.Rotation = 0
+				w.Motion:Tween(
+					handle._icon,
+					TweenInfo.new(seconds, Enum.EasingStyle.Linear),
+					{ Rotation = 360 },
+					"Controls"
+				)
+				task.wait(seconds)
+			end
+		end)
+	end
+	if hasContent then
+		local divider = Create.New("Frame", {
+			Size = if sideBySide then UDim2.new(0, 1, 1, -24) else UDim2.new(1, -24, 0, 1),
+			Position = if sideBySide then UDim2.fromOffset(mainWidth, 12) else UDim2.fromOffset(12, 184),
+			BorderSizePixel = 0,
+			Parent = panel,
+		})
+		w:_bind(divider, { BackgroundColor3 = "BorderSubtle" })
+		local sidebar = Create.New("ScrollingFrame", {
+			Size = if sideBySide
+				then UDim2.new(1, -(mainWidth + 18), 1, -24)
+				else UDim2.new(1, -24, 0, math.max(48, panelHeight - 204)),
+			Position = if sideBySide then UDim2.fromOffset(mainWidth + 10, 12) else UDim2.fromOffset(12, 196),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			CanvasSize = UDim2.new(),
+			ScrollBarThickness = 2,
+			Parent = panel,
+		})
+		Create.List(w.Tokens:Get("RowGap")).Parent = sidebar
+		h._divider = divider
+		h._sidebarHost = sidebar
+		h.Sidebar = DialogSection.new(w, sidebar, j)
+		h.Section = h.Sidebar
+		if options.Build then
+			options.Build(h.Sidebar, h)
+		end
+	end
+	function h:SetTitle(text)
+		self._title.Text = tostring(text or "")
+		return self
+	end
 	function h:SetStatus(text)
 		self._status.Text = tostring(text or "")
+		return self
+	end
+	function h:SetMessage(text)
+		return self:SetStatus(text)
+	end
+	function h:SetDescription(text)
+		local value = tostring(text or "")
+		self._description.Text = value
+		self._description.Visible = value ~= ""
 		return self
 	end
 	function h:SetProgress(value)
@@ -14371,13 +16480,95 @@ function Loading:Show(options)
 		end
 		local c = tonumber(current) or 0
 		local t = math.max(1, tonumber(total) or 1)
+		self._currentStep = c
+		self._totalSteps = t
 		self._step.Text = `{c} / {t}`
+		if not text and self._steps[c] then
+			self:SetStatus(self._steps[c])
+		end
 		self:SetProgress(c / t)
 		return self
 	end
-	function h:SetError(message, buttons)
+	function h:SetSteps(steps)
+		self._steps = steps or {}
+		return self
+	end
+	function h:SetCurrentStep(current, text)
+		return self:SetStep(current, self._totalSteps, text)
+	end
+	function h:SetTotalSteps(total)
+		return self:SetStep(self._currentStep, total)
+	end
+	function h:SetIcon(icon)
+		if self._icon then
+			self._icon:Destroy()
+			self._icon = nil
+		end
+		if icon then
+			self._icon = Icon.new(w, icon, {
+				Size = UDim2.fromOffset(20, 20),
+				Position = UDim2.fromOffset(16, 18),
+				Parent = self.Frame,
+			})
+			Icon.setColor(
+				self._icon,
+				if typeof(self._loadingIconColor) == "Color3" then self._loadingIconColor else w.Theme:Get("Accent")
+			)
+		end
+		local width = if self._sideBySide
+				and self._sidebarHost
+				and not self._sidebarVisible
+			then self._panelWidth
+			else self._mainWidth
+		self._title.Position = UDim2.fromOffset(self._icon and 48 or 16, 16)
+		self._title.Size = UDim2.fromOffset(width - (self._icon and 64 or 32), 24)
+		restartIconSpin(self)
+		return self
+	end
+	function h:SetLoadingIcon(icon)
+		return self:SetIcon(icon)
+	end
+	function h:SetLoadingIconTweenTime(seconds)
+		self._loadingIconTweenTime = math.max(0, tonumber(seconds) or 0)
+		restartIconSpin(self)
+		return self
+	end
+	function h:SetLoadingIconColor(color)
+		self._loadingIconColor = color
+		if self._icon then
+			Icon.setColor(self._icon, if typeof(color) == "Color3" then color else w.Theme:Get("Accent"))
+		end
+		return self
+	end
+	function h:ShowSidebarPage(visible)
+		if not self._sidebarHost then
+			return false
+		end
+		visible = visible ~= false
+		self._sidebarVisible = visible
+		self._sidebarHost.Visible = visible
+		self._divider.Visible = visible
+		local width = if self._sideBySide and not visible then self._panelWidth else self._mainWidth
+		self._title.Size = UDim2.fromOffset(width - (self._icon and 64 or 32), 24)
+		self._status.Size = UDim2.fromOffset(width - 32, 20)
+		self._description.Size = UDim2.fromOffset(width - 32, 30)
+		self._fill.Parent.Size = UDim2.fromOffset(width - 32, 6)
+		self._step.Size = UDim2.fromOffset(width - 32, 18)
+		self._actions.Size = UDim2.fromOffset(width - 32, 30)
+		return self
+	end
+	function h:ShowErrorPage(visible)
+		self._errorVisible = visible ~= false
+		self._fill.BackgroundColor3 = w.Theme:Get(self._errorVisible and "Error" or "Accent")
+		self._actions.Visible = self._errorVisible
+		return self
+	end
+	function h:SetErrorMessage(message)
 		self:SetStatus(message)
-		self._fill.BackgroundColor3 = w.Theme:Get("Error")
+		self:ShowErrorPage(true)
+		return self
+	end
+	function h:SetErrorButtons(buttons)
 		for _, child in self._actions:GetChildren() do
 			if child:IsA("GuiObject") then
 				child:Destroy()
@@ -14407,12 +16598,36 @@ function Loading:Show(options)
 		end
 		return self
 	end
+	function h:SetError(message, buttons)
+		self:SetErrorMessage(message)
+		self:SetErrorButtons(buttons)
+		return self
+	end
 	function h:Dismiss()
 		if self._dismissed then
 			return
 		end
 		self._dismissed = true
+		self._iconSpinToken += 1
 		self._layer:Dismiss()
+	end
+	function h:Destroy()
+		self:Dismiss()
+	end
+	function h:Continue()
+		self:Dismiss()
+	end
+	if hasContent then
+		h:ShowSidebarPage(options.ShowSidebar ~= false)
+	end
+	if options.LoadingIconColor ~= nil then
+		h:SetLoadingIconColor(options.LoadingIconColor)
+	end
+	if options.LoadingIconTweenTime ~= nil then
+		h:SetLoadingIconTweenTime(options.LoadingIconTweenTime)
+	end
+	if options.CurrentStep ~= nil or options.TotalSteps ~= nil then
+		h:SetStep(h._currentStep, h._totalSteps)
 	end
 	self._handle = h
 	return h
@@ -14671,6 +16886,40 @@ local GLYPH = {
 	Loading = "loader-circle",
 }
 
+local function normalizeOptions(options)
+	local out = table.clone(options or {})
+	if out.Content == nil and out.Description ~= nil then
+		out.Content = out.Description
+	end
+	if out.Image == nil then
+		out.Image = out.BigImage or out.BigIcon
+	end
+	if out.Color == nil then
+		out.Color = out.AccentColor or out.IconColor
+	end
+	if out.ContentColor == nil and out.DescriptionColor ~= nil then
+		out.ContentColor = out.DescriptionColor
+	end
+	if out.Sound == nil and out.SoundId ~= nil then
+		out.Sound = out.SoundId
+	end
+	if out.SoundOptions == nil and out.Volume ~= nil then
+		out.SoundOptions = { Volume = out.Volume }
+	end
+	if out.Duration == nil then
+		if out.Persist == true then
+			out.Duration = 0
+		elseif out.Time ~= nil then
+			out.Duration = out.Time
+		end
+	end
+	if out.Steps ~= nil and out.Progress == nil then
+		local total = math.max(1, tonumber(out.Steps) or 1)
+		out.Progress = math.max(0, tonumber(out.CurrentStep) or 0) / total
+	end
+	return out
+end
+
 function Notify.new(window, position)
 	local self = setmetatable({
 		_window = window,
@@ -14748,7 +16997,8 @@ function Notify:GetPosition()
 end
 function Notify:_refreshTheme()
 	for _, item in self._items do
-		local color = self._window.Theme:Get(TOK[item.Variant] or "Accent")
+		local color = typeof(item.Color) == "Color3" and item.Color
+			or self._window.Theme:Get(TOK[item.Variant] or "Accent")
 		if item._rail then
 			item._rail.BackgroundColor3 = color
 		end
@@ -14763,7 +17013,8 @@ function Notify:_mount(item)
 	item._janitor = j
 	local hasActions = item.Actions and #item.Actions > 0
 	local hasProgress = item.Progress ~= nil
-	local height = (hasActions and 100 or 66) + (hasProgress and 9 or 0)
+	local imageBlock = item.Image and 88 or 0
+	local height = 66 + imageBlock + (hasActions and 34 or 0) + (hasProgress and 9 or 0)
 	local frame = Create.New(
 		"Frame",
 		{ Size = UDim2.new(1, 0, 0, height), BackgroundTransparency = 0, BorderSizePixel = 0, Parent = self._host }
@@ -14794,13 +17045,13 @@ function Notify:_mount(item)
 		if item._variantIcon then
 			item._variantIcon:Destroy()
 		end
-		item._variantIcon = Icon.new(w, GLYPH[item.Variant] or GLYPH.Default, {
+		item._variantIcon = Icon.new(w, item.Icon or GLYPH[item.Variant] or GLYPH.Default, {
 			Size = UDim2.fromOffset(15, 15),
 			Position = UDim2.fromScale(0.5, 0.5),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Parent = iconHost,
 		})
-		local color = w.Theme:Get(TOK[item.Variant] or "Accent")
+		local color = typeof(item.Color) == "Color3" and item.Color or w.Theme:Get(TOK[item.Variant] or "Accent")
 		rail.BackgroundColor3 = color
 		Icon.setColor(item._variantIcon, color)
 	end
@@ -14816,6 +17067,9 @@ function Notify:_mount(item)
 		Parent = frame,
 	})
 	w:_bind(item._title, { TextColor3 = "Text" })
+	if typeof(item.TitleColor) == "Color3" then
+		item._title.TextColor3 = item.TitleColor
+	end
 	item._content = Create.New("TextLabel", {
 		Size = UDim2.new(1, -76, 0, 28),
 		Position = UDim2.fromOffset(48, 29),
@@ -14829,6 +17083,22 @@ function Notify:_mount(item)
 		Parent = frame,
 	})
 	w:_bind(item._content, { TextColor3 = "TextSecondary" })
+	if typeof(item.ContentColor) == "Color3" then
+		item._content.TextColor3 = item.ContentColor
+	end
+	if item.Image then
+		item._image = Create.New("ImageLabel", {
+			Size = UDim2.new(1, -26, 0, 78),
+			Position = UDim2.fromOffset(13, 60),
+			BackgroundTransparency = 0,
+			BorderSizePixel = 0,
+			Image = tostring(item.Image),
+			ScaleType = item.ImageScaleType or Enum.ScaleType.Crop,
+			Parent = frame,
+		})
+		Create.New("UICorner", { CornerRadius = UDim.new(0, 8), Parent = item._image })
+		w:_bind(item._image, { BackgroundColor3 = "ControlInset" })
+	end
 	if hasProgress then
 		local track = Create.New("Frame", {
 			Size = UDim2.new(1, -26, 0, 3),
@@ -14878,7 +17148,7 @@ function Notify:_mount(item)
 	if hasActions then
 		local row = Create.New("Frame", {
 			Size = UDim2.new(1, -26, 0, 28),
-			Position = UDim2.fromOffset(13, 66),
+			Position = UDim2.fromOffset(13, 66 + imageBlock),
 			BackgroundTransparency = 1,
 			Parent = frame,
 		})
@@ -14914,6 +17184,9 @@ function Notify:_mount(item)
 			end))
 		end
 	end
+	if item.Sound and w.Sound then
+		w.Sound:Play(item.Sound, item.SoundOptions)
+	end
 	if item.Duration and item.Duration > 0 then
 		j:Add(task.delay(item.Duration, function()
 			item:Dismiss()
@@ -14921,13 +17194,23 @@ function Notify:_mount(item)
 	end
 end
 function Notify:Push(options)
-	options = options or {}
+	options = normalizeOptions(options)
 	local item = {
 		Title = options.Title or "Notification",
 		Content = options.Content or "",
 		Variant = options.Variant or "Default",
+		Icon = options.Icon,
+		Image = options.Image,
+		ImageScaleType = options.ImageScaleType,
+		Color = options.Color,
+		TitleColor = options.TitleColor,
+		ContentColor = options.ContentColor,
+		Sound = options.Sound,
+		SoundOptions = options.SoundOptions,
 		Actions = options.Actions,
-		Progress = options.Progress,
+		Steps = math.max(0, tonumber(options.Steps) or 0),
+		CurrentStep = math.max(0, tonumber(options.CurrentStep) or 0),
+		Progress = if options.Progress ~= nil then options.Progress else if tonumber(options.Steps) then 0 else nil,
 		Duration = if options.Duration == nil then 4 else options.Duration,
 		_service = self,
 		_dismissed = false,
@@ -14936,16 +17219,76 @@ function Notify:Push(options)
 		if self._dismissed then
 			return self
 		end
+		o = normalizeOptions(o)
+		local hadImage = self.Image ~= nil
+		local hadActions = self.Actions and #self.Actions > 0 or false
+		local hadProgress = self.Progress ~= nil
 		for k, v in o do
 			self[k] = v
+		end
+		local hasImage = self.Image ~= nil
+		local hasActions = self.Actions and #self.Actions > 0 or false
+		local hasProgress = self.Progress ~= nil
+		if
+			hadImage ~= hasImage
+			or hadActions ~= hasActions
+			or hadProgress ~= hasProgress
+			or o.Actions ~= nil
+			or o.Duration ~= nil
+			or o.Sound ~= nil
+		then
+			if self._janitor then
+				self._janitor:Destroy()
+				self._service:_mount(self)
+			end
+			return self
 		end
 		if self._title then
 			self._title.Text = self.Title or ""
 			self._content.Text = self.Content or ""
 			self._renderIcon()
+			self._title.TextColor3 = if typeof(self.TitleColor) == "Color3"
+				then self.TitleColor
+				else self._service._window.Theme:Get("Text")
+			self._content.TextColor3 = if typeof(self.ContentColor) == "Color3"
+				then self.ContentColor
+				else self._service._window.Theme:Get("TextSecondary")
+			if self._image then
+				self._image.Image = tostring(self.Image or "")
+				self._image.ScaleType = self.ImageScaleType or Enum.ScaleType.Crop
+			end
 			if self._progressFill and self.Progress ~= nil then
 				self._progressFill.Size = UDim2.new(math.clamp(tonumber(self.Progress) or 0, 0, 1), 0, 1, 0)
 			end
+		end
+		return self
+	end
+	function item:SetImage(image, scaleType)
+		if self._dismissed then
+			return self
+		end
+		self.Image = image
+		if scaleType ~= nil then
+			self.ImageScaleType = scaleType
+		end
+		if self._janitor then
+			self._janitor:Destroy()
+			self._service:_mount(self)
+		end
+		return self
+	end
+	function item:SetColors(accent, title, content)
+		self.Color = accent
+		self.TitleColor = title
+		self.ContentColor = content
+		if self._title then
+			self._renderIcon()
+			self._title.TextColor3 = if typeof(title) == "Color3"
+				then title
+				else self._service._window.Theme:Get("Text")
+			self._content.TextColor3 = if typeof(content) == "Color3"
+				then content
+				else self._service._window.Theme:Get("TextSecondary")
 		end
 		return self
 	end
@@ -14955,6 +17298,22 @@ function Notify:Push(options)
 			self._progressFill.Size = UDim2.new(self.Progress, 0, 1, 0)
 		end
 		return self
+	end
+	function item:ChangeTitle(title)
+		return self:Update({ Title = title })
+	end
+	function item:ChangeDescription(description)
+		return self:Update({ Content = description })
+	end
+	function item:ChangeStep(step, total)
+		self.CurrentStep = math.max(0, tonumber(step) or 0)
+		if total ~= nil then
+			self.Steps = math.max(0, tonumber(total) or 0)
+		end
+		return self:SetProgress(if self.Steps > 0 then self.CurrentStep / self.Steps else 0)
+	end
+	function item:SetStep(step, total)
+		return self:ChangeStep(step, total)
 	end
 	function item:Dismiss()
 		if self._dismissed then
@@ -14969,6 +17328,9 @@ function Notify:Push(options)
 			self._janitor:Destroy()
 		end
 		self._service:_drain()
+	end
+	function item:Destroy()
+		self:Dismiss()
 	end
 	if #self._items < 4 then
 		table.insert(self._items, item)
@@ -15002,6 +17364,232 @@ return Notify
 
 end
 
+__modules["services/Overlays"] = function()
+--!nonstrict
+local Create = __require("runtime/Create")
+local Janitor = __require("runtime/Janitor")
+local Icon = __require("primitives/Icon")
+local Overlays = {}
+Overlays.__index = Overlays
+
+function Overlays.new(window)
+	return setmetatable({ _window = window, _janitor = Janitor.new("Overlays"), _items = {} }, Overlays)
+end
+
+function Overlays:_handle(root, janitor)
+	local service = self
+	local handle = { Root = root, _janitor = janitor, _service = service, _destroyed = false }
+	function handle:SetVisible(visible)
+		self.Root.Visible = visible ~= false
+		return self
+	end
+	function handle:SetPosition(position)
+		if typeof(position) ~= "UDim2" then
+			error("[BobloUI] overlay:SetPosition expects UDim2.", 2)
+		end
+		self.Root.Position = position
+		return self
+	end
+	function handle:GetInstance()
+		return self.Root
+	end
+	function handle:Destroy()
+		if self._destroyed then
+			return
+		end
+		self._destroyed = true
+		local position = table.find(self._service._items, self)
+		if position then
+			table.remove(self._service._items, position)
+		end
+		self._service._janitor:Release(self)
+		self._janitor:Destroy()
+	end
+	table.insert(self._items, handle)
+	self._janitor:Add(handle, "Destroy", handle)
+	return handle
+end
+
+function Overlays:_drag(handle, gui)
+	local start
+	handle._janitor:Add(self._window.Input:AttachDrag(gui, function(delta)
+		if start then
+			handle.Root.Position =
+				UDim2.new(start.X.Scale, start.X.Offset + delta.X, start.Y.Scale, start.Y.Offset + delta.Y)
+		end
+	end, function()
+		start = handle.Root.Position
+		return true
+	end))
+end
+
+function Overlays:_surface(options)
+	options = options or {}
+	local w = self._window
+	local root = Create.New("Frame", {
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Active = true,
+		Position = options.Position or UDim2.fromOffset(14, w.Device.Insets.Top + 14),
+		BackgroundTransparency = tonumber(options.Transparency) or 0.08,
+		BorderSizePixel = 0,
+		Visible = options.Visible ~= false,
+		ZIndex = tonumber(options.ZIndex) or 20,
+		Parent = w.Layers.Toast,
+	})
+	Create.New("UICorner", { CornerRadius = UDim.new(0, tonumber(options.CornerRadius) or 8), Parent = root })
+	local stroke = Create.New("UIStroke", {
+		Thickness = 1,
+		Transparency = 0.42,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = root,
+	})
+	w:_bind(root, { BackgroundColor3 = options.BackgroundToken or "SurfaceRaised" })
+	w:_bind(stroke, { Color = options.BorderToken or "Border" })
+	local janitor = Janitor.new("Overlay")
+	janitor:Add(root)
+	return root, janitor
+end
+
+function Overlays:AddLabel(text, icon, iconPosition)
+	local options = if type(text) == "table" then text else { Text = text, Icon = icon, IconPosition = iconPosition }
+	local root, janitor = self:_surface(options)
+	local hasIcon = options.Icon ~= nil
+	local label = Create.New("TextLabel", {
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		Font = self._window.Fonts.Medium,
+		TextSize = self._window.Tokens:Get("FontSmall"),
+		Text = tostring(options.Text or ""),
+		Parent = root,
+	})
+	Create.New("UIPadding", {
+		PaddingTop = UDim.new(0, 7),
+		PaddingBottom = UDim.new(0, 7),
+		PaddingLeft = UDim.new(0, hasIcon and 30 or 10),
+		PaddingRight = UDim.new(0, hasIcon and 30 or 10),
+		Parent = label,
+	})
+	self._window:_bind(label, { TextColor3 = "TextSecondary" })
+	if hasIcon then
+		local right = options.IconPosition == "Right"
+		local glyph = Icon.new(self._window, options.Icon, {
+			Size = UDim2.fromOffset(14, 14),
+			Position = if right then UDim2.new(1, -9, 0.5, 0) else UDim2.new(0, 9, 0.5, 0),
+			AnchorPoint = if right then Vector2.new(1, 0.5) else Vector2.new(0, 0.5),
+			Parent = root,
+		})
+		Icon.setColor(glyph, self._window.Theme:Get("Accent"))
+	end
+	local handle = self:_handle(root, janitor)
+	handle.Label = label
+	function handle:SetText(value)
+		self.Label.Text = tostring(value or "")
+		return self
+	end
+	self:_drag(handle, root)
+	return handle
+end
+
+function Overlays:AddButton(text, callback, options)
+	if type(text) == "table" then
+		options = text
+		callback = options.Callback
+		text = options.Text or options.Title
+	end
+	options = options or {}
+	local root, janitor = self:_surface(options)
+	local button = Create.New("TextButton", {
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Font = self._window.Fonts.Medium,
+		TextSize = self._window.Tokens:Get("FontSmall"),
+		Text = tostring(text or "Action"),
+		Parent = root,
+	})
+	Create.New("UIPadding", {
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
+		PaddingLeft = UDim.new(0, options.Icon and 32 or 11),
+		PaddingRight = UDim.new(0, 11),
+		Parent = button,
+	})
+	self._window:_bind(button, { TextColor3 = "Text" })
+	if options.Icon then
+		local glyph = Icon.new(self._window, options.Icon, {
+			Size = UDim2.fromOffset(14, 14),
+			Position = UDim2.new(0, 10, 0.5, 0),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Parent = root,
+		})
+		Icon.setColor(glyph, self._window.Theme:Get("Accent"))
+	end
+	local handle = self:_handle(root, janitor)
+	handle.Button = button
+	function handle:SetText(value)
+		self.Button.Text = tostring(value or "")
+		return self
+	end
+	janitor:Add(button.MouseButton1Click:Connect(function()
+		if callback then
+			local ok, err = xpcall(callback, debug.traceback, handle)
+			if not ok then
+				warn(err)
+			end
+		end
+	end))
+	self:_drag(handle, root)
+	return handle
+end
+
+function Overlays:AddMenu(title, options)
+	options = options or {}
+	local root, janitor = self:_surface(options)
+	root.AutomaticSize = Enum.AutomaticSize.None
+	root.Size = options.Size or UDim2.fromOffset(260, 180)
+	local header = Create.New("TextButton", {
+		Size = UDim2.new(1, 0, 0, 34),
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = tostring(title or options.Title or "Menu"),
+		Font = self._window.Fonts.Medium,
+		TextSize = self._window.Tokens:Get("FontBody"),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = root,
+	})
+	Create.New("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11), Parent = header })
+	self._window:_bind(header, { BackgroundColor3 = "SurfaceInset", TextColor3 = "Text" })
+	local content = Create.New("Frame", {
+		Size = UDim2.new(1, -16, 1, -50),
+		Position = UDim2.fromOffset(8, 42),
+		BackgroundTransparency = 1,
+		Parent = root,
+	})
+	Create.List(6).Parent = content
+	local handle = self:_handle(root, janitor)
+	handle.Header = header
+	handle.Content = content
+	function handle:SetTitle(value)
+		self.Header.Text = tostring(value or "")
+		return self
+	end
+	self:_drag(handle, header)
+	return handle
+end
+
+function Overlays:Destroy()
+	for _, handle in table.clone(self._items) do
+		handle:Destroy()
+	end
+	self._janitor:Destroy()
+end
+
+return Overlays
+
+end
+
 __modules["services/Palette"] = function()
 --!nonstrict
 local Create = __require("runtime/Create")
@@ -15016,6 +17604,20 @@ local SEARCH_HEIGHT = 42
 local TOP_PAD = 10
 local LIST_TOP = 60
 local FOOTER_HEIGHT = 24
+
+local function paletteWidth(window)
+	local configured = window._searchbarSize
+	if type(configured) == "number" then
+		return math.min(math.max(280, configured), window.Device.Viewport.X - 32)
+	end
+	if typeof(configured) == "UDim2" then
+		return math.min(
+			math.max(280, window.Device.Viewport.X * configured.X.Scale + configured.X.Offset),
+			window.Device.Viewport.X - 32
+		)
+	end
+	return math.min(520, window.Device.Viewport.X - 32)
+end
 
 function Palette.new(window, search, commands)
 	local self = setmetatable({
@@ -15077,13 +17679,16 @@ function Palette:_applySize(rowCount, empty)
 		self._frame.Position = UDim2.fromOffset(6, 60)
 		return
 	end
-	local width = math.min(520, w.Device.Viewport.X - 32)
+	local width = paletteWidth(w)
 	local height = math.min(404, self:_desktopHeight(rowCount, empty))
 	self._frame.Size = UDim2.fromOffset(width, height)
 	self._frame.Position = UDim2.fromScale(0.5, 0.18)
 end
 
 function Palette:Open(query, mode)
+	if self._window._disableSearch and mode ~= "commands" then
+		return self
+	end
 	if self._handle then
 		self:Close()
 	end
@@ -15107,9 +17712,7 @@ function Palette:Open(query, mode)
 	self._handle = handle
 	local drawer = w.Device.Layout == "Drawer"
 	local frame = Surface.new(w, {
-		Size = if drawer
-			then UDim2.new(1, -12, 1, -72)
-			else UDim2.fromOffset(math.min(520, w.Device.Viewport.X - 32), 112),
+		Size = if drawer then UDim2.new(1, -12, 1, -72) else UDim2.fromOffset(paletteWidth(w), 112),
 		Position = if drawer then UDim2.fromOffset(6, 60) else UDim2.fromScale(0.5, 0.18),
 		AnchorPoint = if drawer then Vector2.new(0, 0) else Vector2.new(0.5, 0),
 		BorderSizePixel = 0,
@@ -15576,6 +18179,12 @@ function Search:Query(text)
 	local results = {}
 	for _, record in self._index do
 		local entry = record.Entry
+		local handle = entry.Handle
+		local activeOnly = self._window._globalSearch == false
+		local tab = handle and handle._section and handle._section._tab
+		if activeOnly and tab ~= nil and tab ~= self._window._active then
+			continue
+		end
 		local score
 		if query == "" then
 			score = if self._window.Favorites and entry.Id and self._window.Favorites:Has(entry.Id) then 100 else 0
@@ -16268,6 +18877,59 @@ function Settings:_ensureMounted()
 			end)
 		end,
 	})
+	editor:AddButton({
+		Title = "Save custom theme",
+		Icon = "save",
+		Text = "Save as…",
+		Callback = function()
+			task.spawn(function()
+				local name = w.Dialog
+					:Prompt({
+						Title = "Save custom theme",
+						Content = "Use letters, numbers, dots, dashes or underscores.",
+						Placeholder = "MyTheme",
+					})
+					:Await()
+				if name and name ~= "" then
+					local ok, err = w:SaveCustomTheme(name)
+					w.Notify:Push({
+						Title = if ok then `Saved theme {name}` else "Theme was not saved",
+						Content = if ok then "It is now available in the theme list." else tostring(err),
+						Variant = if ok then "Success" else "Error",
+					})
+				end
+			end)
+		end,
+	})
+	editor:AddButton({
+		Title = "Use current theme by default",
+		Icon = "pin",
+		Text = "Set default",
+		Callback = function()
+			local ok, err = w:SetDefaultTheme(w.Theme:Current())
+			w.Notify:Push({
+				Title = if ok then "Default theme updated" else "Default was not changed",
+				Content = if ok then w.Theme:Current() else tostring(err),
+				Variant = if ok then "Success" else "Error",
+			})
+		end,
+	})
+	editor:AddButton({
+		Title = "Delete current custom theme",
+		Icon = "trash-2",
+		Text = "Delete",
+		Variant = "Danger",
+		Confirm = "Delete the selected custom theme? Built-in Dark and Light cannot be deleted.",
+		Callback = function()
+			local name = w.Theme:Current()
+			local ok, err = w:DeleteCustomTheme(name)
+			w.Notify:Push({
+				Title = if ok then `Deleted theme {name}` else "Theme was not deleted",
+				Content = if ok then "Dark is active now." else tostring(err),
+				Variant = if ok then "Success" else "Error",
+			})
+		end,
+	})
 
 	local windowSec = tab:AddSection({
 		Id = "__settings.window",
@@ -16453,6 +19115,13 @@ function Settings:_ensureMounted()
 	self:_syncAppearance()
 	return self
 end
+function Settings:RefreshThemeOptions()
+	if self._themeControl and not self._themeControl._destroyed then
+		self._themeControl:SetOptions(self._window.Theme:List(), true)
+		self._themeControl:SetValue(self._window.Theme:Current(), true)
+	end
+	return self
+end
 function Settings:Open()
 	self:_ensureMounted()
 	if self.Tab then
@@ -16563,6 +19232,22 @@ function Sound:Play(name, override)
 		return nil
 	end
 	local base = self._sounds[name]
+	if
+		not base
+		and (
+			type(name) == "number"
+			or (
+				type(name) == "string"
+				and (
+					tonumber(name) ~= nil
+					or string.match(name, "^rbxassetid://") ~= nil
+					or string.match(name, "^https?://") ~= nil
+				)
+			)
+		)
+	then
+		base = normalize(name)
+	end
 	if not base then
 		return nil
 	end
@@ -16692,10 +19377,274 @@ return Storage
 
 end
 
+__modules["services/ThemeManager"] = function()
+--!nonstrict
+local HttpService = game:GetService("HttpService")
+local Storage = __require("services/Storage")
+local ThemeManager = {}
+ThemeManager.__index = ThemeManager
+
+local REQUIRED_TOKENS = {
+	"Canvas",
+	"Background",
+	"Sidebar",
+	"Surface",
+	"SurfaceRaised",
+	"SurfaceInset",
+	"SurfaceSecondary",
+	"SurfaceHover",
+	"SurfaceActive",
+	"Control",
+	"ControlHover",
+	"ControlPressed",
+	"ControlInset",
+	"BorderSubtle",
+	"Border",
+	"BorderStrong",
+	"Text",
+	"TextSecondary",
+	"TextTertiary",
+	"TextDisabled",
+	"Accent",
+	"Success",
+	"Warning",
+	"Error",
+	"Info",
+	"Scrim",
+}
+
+local function validName(name)
+	return type(name) == "string" and name ~= "" and string.match(name, "^[A-Za-z0-9_.%-]+$") ~= nil
+end
+local function encodePalette(palette)
+	local out = {}
+	for token, value in palette or {} do
+		if typeof(value) == "Color3" then
+			out[token] = "#" .. value:ToHex()
+		end
+	end
+	return out
+end
+local function decodePalette(palette)
+	local out = {}
+	for token, value in palette or {} do
+		if type(value) == "string" then
+			local ok, color = pcall(Color3.fromHex, string.gsub(value, "#", ""))
+			if ok then
+				out[token] = color
+			end
+		end
+	end
+	return out
+end
+local function validatePalette(palette)
+	if type(palette) ~= "table" then
+		return false, "palette must be a table"
+	end
+	for _, token in REQUIRED_TOKENS do
+		if typeof(palette[token]) ~= "Color3" then
+			return false, `palette token "{token}" must be Color3`
+		end
+	end
+	return true
+end
+
+function ThemeManager.new(window, folder)
+	local self = setmetatable({
+		_window = window,
+		_storage = Storage.new((folder or window.Id or "Default") .. "/themes"),
+		_custom = {},
+		_default = nil,
+	}, ThemeManager)
+	self:ReloadCustomThemes()
+	self:_loadDefaultMarker()
+	return self
+end
+
+function ThemeManager:_loadDefaultMarker()
+	local default = self._storage:Read("default.txt")
+	if default == "Dark" or default == "Light" or self._custom[default] then
+		self._default = default
+	elseif default and default ~= "" then
+		self._storage:Write("default.txt", "")
+	end
+	return self._default
+end
+
+function ThemeManager:_file(name)
+	return name .. ".json"
+end
+
+function ThemeManager:_refreshSettings()
+	local settings = self._window.Settings
+	if settings and settings.RefreshThemeOptions then
+		settings:RefreshThemeOptions()
+	end
+end
+
+function ThemeManager:SetFolder(folder)
+	if type(folder) ~= "string" or folder == "" then
+		return false, "theme folder must be a non-empty string"
+	end
+	self._storage = Storage.new(folder .. "/themes")
+	self._default = nil
+	self:ReloadCustomThemes()
+	self:_loadDefaultMarker()
+	return true
+end
+
+function ThemeManager:SaveCustomTheme(name, palette)
+	if not validName(name) then
+		return false, "theme name may contain only A-Z, a-z, 0-9, _, ., -"
+	end
+	if name == "Dark" or name == "Light" then
+		return false, "built-in themes cannot be overwritten"
+	end
+	palette = palette or self._window.Theme:Palette()
+	local valid, validationError = validatePalette(palette)
+	if not valid then
+		return false, validationError
+	end
+	local payload = { Name = name, Palette = encodePalette(palette), SavedAt = os.time() }
+	local ok, raw = pcall(HttpService.JSONEncode, HttpService, payload)
+	if not ok then
+		return false, raw
+	end
+	if not self._storage:Write(self:_file(name), raw) then
+		return false, "write failed"
+	end
+	local decoded = decodePalette(payload.Palette)
+	self._custom[name] = decoded
+	self._window.Theme:Register(name, decoded)
+	self:_refreshSettings()
+	return true
+end
+
+function ThemeManager:DeleteCustomTheme(name)
+	if not self._custom[name] then
+		return false, "theme not found"
+	end
+	if self._window.Theme:Current() == name then
+		self._window.Theme:Set("Dark")
+	end
+	if not self._storage:Delete(self:_file(name)) then
+		return false, "delete failed"
+	end
+	self._custom[name] = nil
+	self._window.Theme:Unregister(name)
+	if self._default == name then
+		self:SetDefault(nil)
+	end
+	self:_refreshSettings()
+	return true
+end
+
+function ThemeManager:ReloadCustomThemes()
+	local previous = self._custom
+	local active = self._window.Theme:Current()
+	for name in previous do
+		if self._window.Theme:Current() ~= name then
+			pcall(function()
+				self._window.Theme:Unregister(name)
+			end)
+		end
+	end
+	self._custom = {}
+	for _, path in self._storage:List() do
+		local name = string.match(path, "([^/\\]+)%.json$")
+		if name then
+			local raw = self._storage:Read(self:_file(name))
+			local ok, data = pcall(HttpService.JSONDecode, HttpService, raw or "")
+			if ok and type(data) == "table" and type(data.Palette) == "table" then
+				local palette = decodePalette(data.Palette)
+				if validatePalette(palette) then
+					self._custom[name] = palette
+					self._window.Theme:Register(name, palette)
+				end
+			end
+		end
+	end
+	if previous[active] and not self._custom[active] then
+		self._window.Theme:Set("Dark")
+		self._window.Theme:Unregister(active)
+		if self._default == active then
+			self:SetDefault(nil)
+		end
+	end
+	self:_refreshSettings()
+	return self:ListCustomThemes()
+end
+
+function ThemeManager:ListCustomThemes()
+	local out = {}
+	for name in self._custom do
+		table.insert(out, name)
+	end
+	table.sort(out)
+	return out
+end
+
+function ThemeManager:Load(name)
+	if name ~= "Dark" and name ~= "Light" and not self._custom[name] then
+		return false, "theme not found"
+	end
+	self._window.Theme:Set(name)
+	return true
+end
+
+function ThemeManager:ApplyTheme(name)
+	return self:Load(name)
+end
+
+function ThemeManager:GetCustomTheme(name)
+	local palette = self._custom[name]
+	return palette and table.clone(palette) or nil
+end
+
+function ThemeManager:SetDefault(name)
+	if name ~= nil and name ~= "Dark" and name ~= "Light" and not self._custom[name] then
+		return false, "theme not found"
+	end
+	if not self._storage:Write("default.txt", name or "") then
+		return false, "write failed"
+	end
+	self._default = name
+	return true
+end
+
+function ThemeManager:SaveDefault(name)
+	return self:SetDefault(name)
+end
+
+function ThemeManager:GetDefault()
+	return self._default
+end
+
+function ThemeManager:LoadDefault()
+	if not self._default then
+		return false, "no default theme"
+	end
+	if not self._window.Theme:GetRegistered(self._default) then
+		self:SetDefault(nil)
+		return false, "default theme is no longer available"
+	end
+	self._window.Theme:Set(self._default)
+	return true
+end
+
+function ThemeManager:Destroy()
+	self._custom = {}
+end
+
+return ThemeManager
+
+end
+
 __modules["shell/Row"] = function()
 --!nonstrict
 local Create = __require("runtime/Create")
 local Janitor = __require("runtime/Janitor")
+local Dependency = __require("runtime/Dependency")
 local Button = __require("controls/Button")
 local Toggle = __require("controls/Toggle")
 local Slider = __require("controls/Slider")
@@ -16709,10 +19658,16 @@ local Status = __require("controls/Status")
 local Progress = __require("controls/Progress")
 local Code = __require("controls/Code")
 local Image = __require("controls/Image")
+local Passthrough = __require("controls/Passthrough")
+local Viewport = __require("controls/Viewport")
+local Video = __require("controls/Video")
 local Row = {}
 Row.__index = Row
 function Row.new(section, options)
 	options = options or {}
+	if options.Id then
+		section._window.Registry:AssertAvailable(options.Id, 3)
+	end
 	local self = setmetatable({
 		_section = section,
 		_window = section._window,
@@ -16724,10 +19679,30 @@ function Row.new(section, options)
 		_destroyed = false,
 		Columns = math.clamp(tonumber(options.Columns) or 2, 1, 4),
 		Gap = tonumber(options.Gap) or section._window.Tokens:Get("ColumnGap"),
-		Title = section.Title,
+		Title = options.Title or section.Title,
+		Type = "Row",
+		Id = options.Id,
+		_manualVisible = options.Visible ~= false,
+		_dependencyVisible = true,
+		_manualEnabled = not (options.Disabled == true or type(options.Disabled) == "string"),
+		_dependencyEnabled = true,
+		_parentEnabled = true,
 	}, Row)
 	section._janitor:Add(self, "Destroy", self)
+	if self.Id then
+		self._window.Registry:Add(self, {
+			Id = self.Id,
+			Type = "Row",
+			Title = self.Title or "Row",
+			Tab = self._tab.Id,
+			Section = section.Title,
+			Path = `{self._tab.Title} -> {section.Title or "Default"}`,
+			Persist = false,
+		})
+	end
 	section:_registerControl(self)
+	Dependency.Bind(self, options.VisibleWhen, "visible")
+	Dependency.Bind(self, options.EnabledWhen, "enabled")
 	if section._mounted then
 		self:_mount()
 	end
@@ -16744,6 +19719,7 @@ function Row:_mount()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		LayoutOrder = 0,
+		Visible = self:IsVisible(),
 		Parent = self._section:_controlParent(self),
 	})
 	self._janitor:Add(self._root)
@@ -16753,6 +19729,7 @@ function Row:_mount()
 	for _, control in self._controls do
 		control:_mount()
 	end
+	self:_applyContainerState()
 end
 function Row:_newCell()
 	local index = #self._cells + 1
@@ -16783,6 +19760,9 @@ function Row:_controlParent(control)
 end
 function Row:_registerControl(control)
 	table.insert(self._controls, control)
+	if control._setContainerEnabled then
+		control:_setContainerEnabled(self:IsEnabled())
+	end
 	if self._mounted then
 		control:_mount()
 	end
@@ -16851,6 +19831,50 @@ end
 function Row:AddImage(o)
 	return Image.new(self, o)
 end
+function Row:AddPassthrough(o)
+	return Passthrough.new(self, o)
+end
+function Row:AddViewport(o)
+	return Viewport.new(self, o)
+end
+function Row:AddVideo(o)
+	return Video.new(self, o)
+end
+function Row:SetVisible(visible)
+	self._manualVisible = visible == true
+	self:_applyContainerState()
+	return self
+end
+function Row:IsVisible()
+	return self._manualVisible and self._dependencyVisible
+end
+function Row:SetEnabled(enabled)
+	self._manualEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function Row:IsEnabled()
+	return self._parentEnabled and self._manualEnabled and self._dependencyEnabled
+end
+function Row:_setContainerEnabled(enabled)
+	self._parentEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function Row:_applyContainerState()
+	if self._root then
+		self._root.Visible = self:IsVisible()
+	end
+	local enabled = self:IsEnabled()
+	for _, control in self._controls do
+		if control._setContainerEnabled then
+			control:_setContainerEnabled(enabled)
+		end
+	end
+	if self._section and self._section._refreshSeparators then
+		self._section:_refreshSeparators()
+	end
+end
 function Row:Reset()
 	for _, c in self._controls do
 		if c.Reset then
@@ -16869,6 +19893,7 @@ function Row:Destroy()
 		c:Destroy()
 	end
 	self._janitor:Destroy()
+	self._window.Registry:Remove(self)
 	self._section:_removeControl(self)
 end
 return Row
@@ -16879,6 +19904,7 @@ __modules["shell/Section"] = function()
 --!nonstrict
 local Create = __require("runtime/Create")
 local Janitor = __require("runtime/Janitor")
+local Dependency = __require("runtime/Dependency")
 local Surface = __require("primitives/Surface")
 local Icon = __require("primitives/Icon")
 local Button = __require("controls/Button")
@@ -16894,6 +19920,9 @@ local Status = __require("controls/Status")
 local Progress = __require("controls/Progress")
 local Code = __require("controls/Code")
 local Image = __require("controls/Image")
+local Passthrough = __require("controls/Passthrough")
+local Viewport = __require("controls/Viewport")
+local Video = __require("controls/Video")
 local Row = __require("shell/Row")
 local TabBox = __require("shell/TabBox")
 local Section = {}
@@ -16932,7 +19961,11 @@ function Section.new(tab, options)
 		_janitor = Janitor.new(`Section[{options.Title or "Default"}]`),
 		_controls = {},
 		_mounted = false,
-		_visible = options.Visible ~= false,
+		_manualVisible = options.Visible ~= false,
+		_dependencyVisible = true,
+		_manualEnabled = not (options.Disabled == true or type(options.Disabled) == "string"),
+		_dependencyEnabled = true,
+		_parentEnabled = true,
 	}, Section)
 	tab._janitor:Add(self, "Destroy", self)
 	table.insert(tab._sections, self)
@@ -16956,6 +19989,8 @@ function Section.new(tab, options)
 			Icon.setColor(self._sectionIcon, self._window.Theme:Get("Accent"))
 		end
 	end))
+	Dependency.Bind(self, options.VisibleWhen, "visible")
+	Dependency.Bind(self, options.EnabledWhen, "enabled")
 	if tab._mounted then
 		self:_mount()
 	end
@@ -16975,7 +20010,7 @@ function Section:_mount()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
 		LayoutOrder = self._order,
-		Visible = self._visible,
+		Visible = self._manualVisible and self._dependencyVisible,
 		Parent = self._tab:_sectionParent(self.Column),
 	}, {
 		Token = if self._implicit then "Canvas" else "Surface",
@@ -17123,6 +20158,7 @@ function Section:_mount()
 		control:_mount()
 	end
 	self:_reparentControls()
+	self:_applyContainerState()
 end
 function Section:_wantedContentLayout()
 	if self.Layout == "Stack" or self.Layout == "Grid" then
@@ -17308,6 +20344,9 @@ function Section:_refreshSeparators()
 end
 function Section:_registerControl(c)
 	table.insert(self._controls, c)
+	if c._setContainerEnabled then
+		c:_setContainerEnabled(self:IsEnabled())
+	end
 	if self._mounted then
 		task.defer(function()
 			if not self._destroyed then
@@ -17384,6 +20423,15 @@ function Section:AddCode(o)
 end
 function Section:AddImage(o)
 	return self:_createControl(Image, o)
+end
+function Section:AddPassthrough(o)
+	return self:_createControl(Passthrough, o)
+end
+function Section:AddViewport(o)
+	return self:_createControl(Viewport, o)
+end
+function Section:AddVideo(o)
+	return self:_createControl(Video, o)
 end
 function Section:AddRow(o)
 	return self:_createControl(Row, o)
@@ -17462,12 +20510,41 @@ function Section:Reset()
 	return self
 end
 function Section:SetVisible(v)
-	self._visible = v == true
+	self._manualVisible = v == true
+	self:_applyContainerState()
+	return self
+end
+function Section:IsVisible()
+	return self._manualVisible and self._dependencyVisible
+end
+function Section:SetEnabled(enabled)
+	self._manualEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function Section:IsEnabled()
+	return self._parentEnabled and self._manualEnabled and self._dependencyEnabled
+end
+function Section:_setContainerEnabled(enabled)
+	self._parentEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function Section:_applyContainerState()
+	local visible = self._manualVisible and self._dependencyVisible
+	local enabled = self._parentEnabled and self._manualEnabled and self._dependencyEnabled
 	if self._root then
-		self._root.Visible = self._visible
+		self._root.Visible = visible
+	end
+	for _, control in self._controls do
+		if control._setContainerEnabled then
+			control:_setContainerEnabled(enabled)
+		end
+	end
+	if self.Id then
+		self._window.Registry:Update(self, { Hidden = not visible, Disabled = not enabled })
 	end
 	self._tab:_scheduleSectionLayout()
-	return self
 end
 function Section:SetCollapsed(v)
 	self.Collapsed = v == true
@@ -17889,7 +20966,7 @@ function Tab:_applySectionLayout(layout)
 	end
 	local visible = {}
 	for _, section in self._sections do
-		if section._root and section._visible ~= false then
+		if section._root and section:IsVisible() then
 			section._root.Parent = self._sectionHost
 			table.insert(visible, section)
 		end
@@ -18000,6 +21077,15 @@ end
 function Tab:AddImage(o)
 	return self:_default():AddImage(o)
 end
+function Tab:AddPassthrough(o)
+	return self:_default():AddPassthrough(o)
+end
+function Tab:AddViewport(o)
+	return self:_default():AddViewport(o)
+end
+function Tab:AddVideo(o)
+	return self:_default():AddVideo(o)
+end
 function Tab:AddRow(o)
 	return self:_default():AddRow(o or {})
 end
@@ -18024,16 +21110,16 @@ function Tab:_applyNavVisual(hover: boolean)
 	local selected = self._selected
 	self._window.Motion:Tween(self._button, "Fast", {
 		BackgroundTransparency = if selected then 0.56 elseif hover then 0.76 else 1,
-	})
+	}, "Tabs")
 	if self._avatarBack then
 		self._window.Motion:Tween(self._avatarBack, "Fast", {
 			BackgroundTransparency = if selected then 0.4 elseif hover then 0.68 else 0.82,
-		})
+		}, "Tabs")
 	end
 	if self._avatarStroke then
 		self._window.Motion:Tween(self._avatarStroke, "Fast", {
 			Transparency = if selected then 0.22 elseif hover then 0.48 else 0.68,
-		})
+		}, "Tabs")
 	end
 end
 
@@ -18245,6 +21331,7 @@ __modules["shell/TabBox"] = function()
 --!nonstrict
 local Create = __require("runtime/Create")
 local Janitor = __require("runtime/Janitor")
+local Dependency = __require("runtime/Dependency")
 local Button = __require("controls/Button")
 local Toggle = __require("controls/Toggle")
 local Slider = __require("controls/Slider")
@@ -18258,6 +21345,9 @@ local Status = __require("controls/Status")
 local Progress = __require("controls/Progress")
 local Code = __require("controls/Code")
 local Image = __require("controls/Image")
+local Passthrough = __require("controls/Passthrough")
+local Viewport = __require("controls/Viewport")
+local Video = __require("controls/Video")
 local TabBox = {}
 TabBox.__index = TabBox
 local SubTab = {}
@@ -18320,6 +21410,9 @@ function SubTab:_controlParent()
 end
 function SubTab:_registerControl(c)
 	table.insert(self._controls, c)
+	if c._setContainerEnabled then
+		c:_setContainerEnabled(self._box:IsEnabled())
+	end
 	if self._mounted then
 		c:_mount()
 		self:_refreshSeparators()
@@ -18390,6 +21483,15 @@ end
 function SubTab:AddImage(o)
 	return Image.new(self, o)
 end
+function SubTab:AddPassthrough(o)
+	return Passthrough.new(self, o)
+end
+function SubTab:AddViewport(o)
+	return Viewport.new(self, o)
+end
+function SubTab:AddVideo(o)
+	return Video.new(self, o)
+end
 function SubTab:Destroy()
 	if self._destroyed then
 		return
@@ -18403,6 +21505,9 @@ end
 
 function TabBox.new(section, options)
 	options = options or {}
+	if options.Id then
+		section._window.Registry:AssertAvailable(options.Id, 3)
+	end
 	local self = setmetatable({
 		_section = section,
 		_window = section._window,
@@ -18413,9 +21518,29 @@ function TabBox.new(section, options)
 		_mounted = false,
 		_destroyed = false,
 		Title = options.Title or section.Title,
+		Type = "TabBox",
+		Id = options.Id,
+		_manualVisible = options.Visible ~= false,
+		_dependencyVisible = true,
+		_manualEnabled = not (options.Disabled == true or type(options.Disabled) == "string"),
+		_dependencyEnabled = true,
+		_parentEnabled = true,
 	}, TabBox)
 	section._janitor:Add(self, "Destroy", self)
+	if self.Id then
+		self._window.Registry:Add(self, {
+			Id = self.Id,
+			Type = "TabBox",
+			Title = self.Title or "TabBox",
+			Tab = self._tab.Id,
+			Section = section.Title,
+			Path = `{self._tab.Title} -> {section.Title or "Default"}`,
+			Persist = false,
+		})
+	end
 	section:_registerControl(self)
+	Dependency.Bind(self, options.VisibleWhen, "visible")
+	Dependency.Bind(self, options.EnabledWhen, "enabled")
 	if section._mounted then
 		self:_mount()
 	end
@@ -18433,6 +21558,7 @@ function TabBox:_mount()
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
+		Visible = self:IsVisible(),
 		Parent = self._section:_controlParent(self),
 	})
 	self._janitor:Add(self._root)
@@ -18462,10 +21588,17 @@ function TabBox:_mount()
 	elseif self._tabs[1] then
 		self:Select(self._tabs[1].Id)
 	end
+	self:_applyContainerState()
 end
 function TabBox:AddTab(options)
 	if type(options) ~= "table" or type(options.Title) ~= "string" then
 		error("[BobloUI] TabBox:AddTab requires Title.", 2)
+	end
+	local id = options.Id or string.lower(string.gsub(options.Title, "%s+", "-"))
+	for _, existing in self._tabs do
+		if existing.Id == id then
+			error(`[BobloUI] duplicate TabBox tab Id "{id}".`, 2)
+		end
 	end
 	local tab = SubTab.new(self, options)
 	table.insert(self._tabs, tab)
@@ -18497,6 +21630,43 @@ function TabBox:Select(id)
 	return self
 end
 function TabBox:_refreshSeparators() end
+function TabBox:SetVisible(visible)
+	self._manualVisible = visible == true
+	self:_applyContainerState()
+	return self
+end
+function TabBox:IsVisible()
+	return self._manualVisible and self._dependencyVisible
+end
+function TabBox:SetEnabled(enabled)
+	self._manualEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function TabBox:IsEnabled()
+	return self._parentEnabled and self._manualEnabled and self._dependencyEnabled
+end
+function TabBox:_setContainerEnabled(enabled)
+	self._parentEnabled = enabled ~= false
+	self:_applyContainerState()
+	return self
+end
+function TabBox:_applyContainerState()
+	if self._root then
+		self._root.Visible = self:IsVisible()
+	end
+	local enabled = self:IsEnabled()
+	for _, tab in self._tabs do
+		for _, control in tab._controls do
+			if control._setContainerEnabled then
+				control:_setContainerEnabled(enabled)
+			end
+		end
+	end
+	if self._section and self._section._refreshSeparators then
+		self._section:_refreshSeparators()
+	end
+end
 function TabBox:Reset()
 	for _, tab in self._tabs do
 		for _, c in tab._controls do
@@ -18517,6 +21687,7 @@ function TabBox:Destroy()
 		tab:Destroy()
 	end
 	self._janitor:Destroy()
+	self._window.Registry:Remove(self)
 	self._section:_removeControl(self)
 end
 return TabBox
@@ -18581,19 +21752,44 @@ function Window.new(context, options)
 		_scale = options.Scale or 1,
 		_rememberGeometry = options.RememberGeometry ~= false,
 		_sidebarHidden = options.SidebarHidden == true,
+		_minContainerWidth = math.max(320, tonumber(options.MinContainerWidth) or 500),
+		_minSidebarWidth = math.max(96, tonumber(options.MinSidebarWidth) or 120),
+		_sidebarCompactWidth = math.max(48, tonumber(options.SidebarCompactWidth) or context.Tokens:Get("RailWidth")),
+		_sidebarCollapseThreshold = math.max(320, tonumber(options.SidebarCollapseThreshold) or 700),
+		_compactWidthActivation = math.max(360, tonumber(options.CompactWidthActivation) or 1100),
+		_enableCompacting = options.EnableCompacting ~= false,
+		_disableCompactingSnap = options.DisableCompactingSnap == true,
+		_sidebarCompacted = options.SidebarCompacted == true,
+		_sidebarWidth = math.max(
+			math.max(96, tonumber(options.MinSidebarWidth) or 120),
+			tonumber(options.SidebarWidth) or context.Tokens:Get("SidebarWidth")
+		),
+		_sidebarResizeEnabled = options.EnableSidebarResize ~= false,
+		_disableSearch = options.DisableSearch == true,
+		_searchbarSize = options.SearchbarSize,
+		_globalSearch = options.GlobalSearch ~= false,
+		_showMobileButtons = options.ShowMobileButtons ~= false,
+		_mobileButtonsSide = options.MobileButtonsSide or "Center",
 		_cornerRadius = options.CornerRadius or context.Tokens:Get("CornerLg"),
 		_footerHeight = math.max(26, math.floor(tonumber(options.FooterHeight) or 28)),
 		_footerTextValue = options.FooterText,
 		_windowOpacity = math.clamp(tonumber(options.Opacity) or 1, 0.25, 1),
-		_tabTransition = options.TabTransition or { Style = "Slide", Duration = 0.12 },
+		_tabTransition = options.TabTransition or {
+			Style = "Slide",
+			Duration = tonumber(options.TabTransitionTime) or 0.12,
+			Offset = tonumber(options.TabSwipeOffset) or 10,
+			Direction = options.TabSwipeFrom or "Right",
+		},
 		_windowAnimation = options.WindowAnimation or { Style = "Slide", Duration = 0.12, Offset = 8 },
+		_animationFlags = { Window = true, Tabs = true, Controls = true },
 		_visibilityToken = 0,
 		_topbarItems = {},
 		_restoreSpec = options.RestoreButton,
 		_showText = options.ShowText or "Show BobloUI",
 		_showTextExplicit = options.ShowText ~= nil,
-		_restoreMode = if options.RestoreButton == false
+		_restoreMode = if options.ShowMobileButtons == false and options.RestoreButton == nil
 			then "Never"
+			elseif options.RestoreButton == false then "Never"
 			elseif type(options.RestoreButton) == "table" and options.RestoreButton.Enabled == false then "Never"
 			elseif options.RestoreButton ~= nil then (
 				(type(options.RestoreButton) == "table" and options.RestoreButton.Mode) or "Always"
@@ -18604,11 +21800,11 @@ function Window.new(context, options)
 	}, Window)
 
 	self:_build()
-	self:_applyLayout(self.Device.Layout, true)
+	self:_applyLayout(self:_responsiveLayout(), true)
 
 	self._janitor:Add(self.Device.Changed:Connect(function(device, changed)
 		if changed.Layout then
-			self:_applyLayout(device.Layout)
+			self:_applyLayout(self:_responsiveLayout())
 		end
 		if changed.Class then
 			self.Tokens:SetDeviceClass(device.Class)
@@ -18634,7 +21830,8 @@ function Window.new(context, options)
 		end
 	end))
 
-	-- Edge swipe opens the mobile drawer; a left swipe while it is open closes it.
+	-- Edge swipe opens the mobile drawer; TabSwipeOffset/TabSwipeFrom configure
+	-- tab transition motion rather than touch navigation.
 	self._janitor:Add(self.Input.Began:Connect(function(input, processed)
 		if processed or self._layout ~= "Drawer" or input.UserInputType ~= Enum.UserInputType.Touch then
 			return
@@ -18661,6 +21858,20 @@ function Window.new(context, options)
 	end))
 
 	return self
+end
+
+function Window:_responsiveLayout()
+	local width = self.Device.Viewport.X
+	if width < self._sidebarCollapseThreshold then
+		return "Drawer"
+	end
+	if self._sidebarCompacted then
+		return "Rail"
+	end
+	if self._enableCompacting and not self._disableCompactingSnap and width < self._compactWidthActivation then
+		return "Rail"
+	end
+	return "Wide"
 end
 
 function Window:_bind(instance: Instance, map: { [string]: any })
@@ -18903,15 +22114,15 @@ function Window:_selectTab(tab)
 	self._active = tab
 	tab:_setSelected(true)
 	local tr = self._tabTransition or {}
-	if tab._page and tr.Style ~= "None" then
+	if tab._page and self._animationFlags.Tabs ~= false and tr.Style ~= "None" then
 		local offset = tonumber(tr.Offset) or 10
-		local dir = tr.Direction or "Right"
+		local dir = string.lower(tostring(tr.Direction or "Right"))
 		local x, y = 0, 0
-		if dir == "Left" then
+		if dir == "left" then
 			x = -offset
-		elseif dir == "Up" then
+		elseif dir == "up" or dir == "top" then
 			y = -offset
-		elseif dir == "Down" then
+		elseif dir == "down" or dir == "bottom" then
 			y = offset
 		else
 			x = offset
@@ -18920,7 +22131,8 @@ function Window:_selectTab(tab)
 		self.Motion:Tween(
 			tab._page,
 			TweenInfo.new(tonumber(tr.Duration) or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Position = UDim2.new() }
+			{ Position = UDim2.new() },
+			"Tabs"
 		)
 	end
 	self:_refreshHeaderTitle()
@@ -19167,6 +22379,7 @@ function WindowChrome:_buildHeader()
 		BackgroundTransparency = 0.82,
 		AutoButtonColor = false,
 		Text = "",
+		Visible = not self._disableSearch,
 		Parent = self._header,
 	})
 	New("UICorner", { CornerRadius = UDim.new(0, tokens:Get("CornerSm")), Parent = self._searchButton })
@@ -19355,7 +22568,7 @@ function WindowChrome:_flashThemeSwap()
 	flash.BackgroundColor3 = self.Theme:Get("Canvas")
 	flash.BackgroundTransparency = 0.55
 	flash.Visible = true
-	local tween = self.Motion:Tween(flash, TweenInfo.new(FADE_TIME), { BackgroundTransparency = 1 })
+	local tween = self.Motion:Tween(flash, TweenInfo.new(FADE_TIME), { BackgroundTransparency = 1 }, "Window")
 	if tween then
 		tween.Completed:Once(function()
 			flash.Visible = false
@@ -19531,7 +22744,60 @@ function WindowChrome:SetWindowAnimation(options)
 	self._windowAnimation = options or { Style = "None" }
 	return self
 end
+function WindowChrome:SetAnimations(options, transitionTime, swipeOffset, swipeFrom)
+	options = options or {}
+	if options.ToggleWindow ~= nil then
+		options.Window = options.ToggleWindow
+	end
+	if options.TabSwitch ~= nil then
+		options.Tabs = options.TabSwitch
+	end
+	if options.Groupbox ~= nil or options.Dropdown ~= nil or options.KeyPicker ~= nil then
+		options.Controls = options.Groupbox ~= false and options.Dropdown ~= false and options.KeyPicker ~= false
+	end
+	if options.All ~= nil then
+		local enabled = options.All ~= false
+		self._animationFlags.Window = enabled
+		self._animationFlags.Tabs = enabled
+		self._animationFlags.Controls = enabled
+		self.Motion:SetCategory("Window", enabled)
+		self.Motion:SetCategory("Tabs", enabled)
+		self.Motion:SetCategory("Controls", enabled)
+	end
+	if options.Window ~= nil then
+		self._animationFlags.Window = options.Window ~= false
+		self.Motion:SetCategory("Window", options.Window ~= false)
+	end
+	if options.Tabs ~= nil then
+		self._animationFlags.Tabs = options.Tabs ~= false
+		self.Motion:SetCategory("Tabs", options.Tabs ~= false)
+	end
+	if options.Controls ~= nil then
+		self._animationFlags.Controls = options.Controls ~= false
+		self.Motion:SetCategory("Controls", options.Controls ~= false)
+	end
+	if transitionTime ~= nil or swipeOffset ~= nil or swipeFrom ~= nil then
+		local transition = table.clone(self._tabTransition or {})
+		transition.Duration = tonumber(transitionTime) or transition.Duration
+		transition.Offset = tonumber(swipeOffset) or transition.Offset
+		transition.Direction = swipeFrom or transition.Direction
+		self:SetTabTransition(transition)
+	end
+	return self
+end
+function WindowChrome:SetAnimationEnabled(component, enabled)
+	if component == "All" then
+		return self:SetAnimations({ All = enabled })
+	end
+	if self._animationFlags[component] == nil then
+		error("[BobloUI] animation component must be Window, Tabs, Controls, or All.", 2)
+	end
+	return self:SetAnimations({ [component] = enabled })
+end
 function WindowChrome:_shouldShowRestoreButton()
+	if not self._showMobileButtons and self.Device.IsTouch then
+		return false
+	end
 	if self._restoreMode == "Never" then
 		return false
 	end
@@ -19590,8 +22856,16 @@ function WindowChrome:SetRestoreButton(options)
 		b.Position = options.Position
 		b.AnchorPoint = options.AnchorPoint or b.AnchorPoint
 	elseif not custom then
-		b.Position = UDim2.new(0.5, 0, 0, math.max(12, self.Device.Insets.Top + 10))
-		b.AnchorPoint = Vector2.new(0.5, 0)
+		if self._mobileButtonsSide == "Left" then
+			b.Position = UDim2.new(0, 12, 0, math.max(12, self.Device.Insets.Top + 10))
+			b.AnchorPoint = Vector2.new(0, 0)
+		elseif self._mobileButtonsSide == "Right" then
+			b.Position = UDim2.new(1, -12, 0, math.max(12, self.Device.Insets.Top + 10))
+			b.AnchorPoint = Vector2.new(1, 0)
+		else
+			b.Position = UDim2.new(0.5, 0, 0, math.max(12, self.Device.Insets.Top + 10))
+			b.AnchorPoint = Vector2.new(0.5, 0)
+		end
 	end
 	if self._restoreIcon then
 		self._restoreIcon:Destroy()
@@ -19673,13 +22947,14 @@ function WindowChrome:Show()
 		self._restoreButton.Visible = false
 	end
 	local spec = self._windowAnimation or {}
-	if self._layout ~= "Drawer" and spec.Style ~= "None" then
+	if self._layout ~= "Drawer" and self._animationFlags.Window ~= false and spec.Style ~= "None" then
 		local offset = tonumber(spec.Offset) or 8
 		root.Position = self:_animatedPosition(target, offset)
 		self.Motion:Tween(
 			root,
 			TweenInfo.new(tonumber(spec.Duration) or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Position = target }
+			{ Position = target },
+			"Window"
 		)
 	else
 		root.Position = target
@@ -19699,11 +22974,12 @@ function WindowChrome:Hide()
 	local target = root.Position
 	self._hiddenRestPosition = target
 	local spec = self._windowAnimation or {}
-	if self._layout ~= "Drawer" and spec.Style ~= "None" then
+	if self._layout ~= "Drawer" and self._animationFlags.Window ~= false and spec.Style ~= "None" then
 		local tween = self.Motion:Tween(
 			root,
 			TweenInfo.new(tonumber(spec.Duration) or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Position = self:_animatedPosition(target, tonumber(spec.Offset) or 8) }
+			{ Position = self:_animatedPosition(target, tonumber(spec.Offset) or 8) },
+			"Window"
 		)
 		if tween then
 			tween.Completed:Once(function()
@@ -19814,7 +23090,7 @@ function WindowLayout:_buildBody()
 
 	self._navPanel = New("Frame", {
 		Name = "Nav",
-		Size = UDim2.new(0, tokens:Get("SidebarWidth"), 1, 0),
+		Size = UDim2.new(0, self._sidebarWidth, 1, 0),
 		BorderSizePixel = 0,
 		Parent = self._body,
 	})
@@ -19829,6 +23105,35 @@ function WindowLayout:_buildBody()
 	})
 	self._navLine.BackgroundTransparency = 0.45
 	self:_bind(self._navLine, { BackgroundColor3 = "BorderSubtle" })
+	self._sidebarGrip = New("TextButton", {
+		Name = "SidebarResizeGrip",
+		Size = UDim2.new(0, 8, 1, 0),
+		Position = UDim2.new(1, -4, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+		ZIndex = 8,
+		Parent = self._navPanel,
+	})
+	self._janitor:Add(self._sidebarGrip.InputBegan:Connect(function(input)
+		if
+			not self._sidebarResizeEnabled
+			or self._layout ~= "Wide"
+			or self._sidebarHidden
+			or (
+				input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and input.UserInputType ~= Enum.UserInputType.Touch
+			)
+		then
+			return
+		end
+		local start = input.Position
+		local width = self._sidebarWidth
+		self.Input:CapturePointer(self._sidebarGrip, input, function(move)
+			self:SetSidebarWidth(width + (move.Position.X - start.X) / math.max(0.01, self._scale or 1))
+		end, function() end)
+	end))
 
 	-- Reparented between _navPanel and the drawer. Never rebuilt.
 	self._navList = New("Frame", {
@@ -19847,8 +23152,8 @@ function WindowLayout:_buildBody()
 
 	self._content = New("Frame", {
 		Name = "Content",
-		Size = UDim2.new(1, -tokens:Get("SidebarWidth"), 1, 0),
-		Position = UDim2.new(0, tokens:Get("SidebarWidth"), 0, 0),
+		Size = UDim2.new(1, -self._sidebarWidth, 1, 0),
+		Position = UDim2.new(0, self._sidebarWidth, 0, 0),
 		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
@@ -19927,7 +23232,7 @@ function WindowLayout:_buildResizeGrip()
 			local _, safeSize = self.Device:SafeArea()
 			local maxWidth = math.max(320, (safeSize.X - 40) / scale)
 			local maxHeight = math.max(260, (safeSize.Y - 40) / scale)
-			local minWidth = math.min(self._minSize.X, maxWidth)
+			local minWidth = math.min(math.max(self._minSize.X, self._minContainerWidth), maxWidth)
 			local minHeight = math.min(self._minSize.Y, maxHeight)
 			local width = math.clamp(startSize.X + delta.X, minWidth, maxWidth)
 			local height = math.clamp(startSize.Y + delta.Y, minHeight, maxHeight)
@@ -20004,6 +23309,9 @@ function WindowLayout:_applyLayout(layout: string, initial: boolean?)
 		self._footer.Visible = not drawerMode
 	end
 	self._navPanel.Visible = not drawerMode and not self._sidebarHidden
+	if self._sidebarGrip then
+		self._sidebarGrip.Visible = self._sidebarResizeEnabled and layout == "Wide" and not self._sidebarHidden
+	end
 	self._subtitleLabel.Visible = self.Subtitle ~= nil and not drawerMode
 
 	if self._navList.Parent ~= self._navPanel then
@@ -20039,8 +23347,8 @@ function WindowLayout:_applyTokens()
 
 	local navWidth = if self._sidebarHidden and not drawerMode
 		then 0
-		elseif railMode then tokens:Get("RailWidth")
-		else tokens:Get("SidebarWidth")
+		elseif railMode then self._sidebarCompactWidth
+		else self._sidebarWidth
 	local headerHeight = tokens:Get("HeaderHeight")
 
 	self._header.Size = UDim2.new(1, 0, 0, headerHeight)
@@ -20104,7 +23412,7 @@ function WindowLayout:_applyGeometry()
 		end
 		local _, safeSize = self.Device:SafeArea()
 		local scale = math.max(0.01, self._scale or 1)
-		local maxWidth = math.max(320, (safeSize.X - 40) / scale)
+		local maxWidth = math.max(self._minContainerWidth, (safeSize.X - 40) / scale)
 		local maxHeight = math.max(260, (safeSize.Y - 40) / scale)
 		self._root.Size =
 			UDim2.fromOffset(math.min(self._size.X.Offset, maxWidth), math.min(self._size.Y.Offset, maxHeight))
@@ -20119,7 +23427,7 @@ function WindowLayout:OpenDrawer()
 	end
 
 	local tokens = self.Tokens
-	local width = math.min(tokens:Get("SidebarWidth"), self.Device.Viewport.X - 60)
+	local width = math.min(self._sidebarWidth, self.Device.Viewport.X - 60)
 
 	local handle = self.Layers:Push({
 		Scrim = true,
@@ -20145,7 +23453,7 @@ function WindowLayout:OpenDrawer()
 
 	self.Motion:Tween(panel, TweenInfo.new(DRAWER_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = UDim2.fromOffset(0, 0),
-	})
+	}, "Window")
 
 	self._drawer = handle
 end
@@ -20187,6 +23495,139 @@ function WindowLayout:IsSidebarHidden()
 end
 function WindowLayout:ToggleSidebar()
 	return self:SetSidebarHidden(not self._sidebarHidden)
+end
+function WindowLayout:SetSidebarWidth(width)
+	if type(width) ~= "number" then
+		error("[BobloUI] Window:SetSidebarWidth expects number.", 2)
+	end
+	local scale = math.max(0.01, self._scale or 1)
+	local rootWidth = self._root.AbsoluteSize.X / scale
+	if rootWidth < 320 then
+		rootWidth = math.max(self._minContainerWidth, self._size.X.Offset)
+	end
+	local maxWidth = math.max(self._minSidebarWidth, math.min(420, rootWidth - 260))
+	self._sidebarWidth = math.clamp(math.floor(width + 0.5), self._minSidebarWidth, maxWidth)
+	self:_applyTokens()
+	return self
+end
+function WindowLayout:GetSidebarWidth()
+	return self._sidebarWidth
+end
+function WindowLayout:SetSidebarResizeEnabled(enabled)
+	self._sidebarResizeEnabled = enabled ~= false
+	if self._sidebarGrip then
+		self._sidebarGrip.Visible = self._sidebarResizeEnabled and self._layout == "Wide" and not self._sidebarHidden
+	end
+	return self
+end
+function WindowLayout:SetCompact(enabled)
+	self.Tokens:SetDensity(if enabled then "Compact" else "Comfortable")
+	return self
+end
+function WindowLayout:IsCompact()
+	return self.Tokens:GetDensity() == "Compact"
+end
+function WindowLayout:SetSidebarCompacted(enabled)
+	self._sidebarCompacted = enabled == true
+	self:_applyLayout(self:_responsiveLayout(), true)
+	return self
+end
+function WindowLayout:IsSidebarCompacted()
+	return self._sidebarCompacted == true
+end
+function WindowLayout:SetResponsiveThresholds(options)
+	options = options or {}
+	if options.MinContainerWidth ~= nil then
+		self._minContainerWidth = math.max(320, tonumber(options.MinContainerWidth) or self._minContainerWidth)
+	end
+	if options.MinSidebarWidth ~= nil then
+		self._minSidebarWidth = math.max(96, tonumber(options.MinSidebarWidth) or self._minSidebarWidth)
+	end
+	if options.SidebarCompactWidth ~= nil then
+		self._sidebarCompactWidth = math.max(48, tonumber(options.SidebarCompactWidth) or self._sidebarCompactWidth)
+	end
+	if options.SidebarCollapseThreshold ~= nil then
+		self._sidebarCollapseThreshold =
+			math.max(320, tonumber(options.SidebarCollapseThreshold) or self._sidebarCollapseThreshold)
+	end
+	if options.CompactWidthActivation ~= nil then
+		self._compactWidthActivation =
+			math.max(360, tonumber(options.CompactWidthActivation) or self._compactWidthActivation)
+	end
+	if options.EnableCompacting ~= nil then
+		self._enableCompacting = options.EnableCompacting ~= false
+	end
+	if options.DisableCompactingSnap ~= nil then
+		self._disableCompactingSnap = options.DisableCompactingSnap == true
+	end
+	self:_applyLayout(self:_responsiveLayout(), true)
+	return self
+end
+function WindowLayout:SetSearchEnabled(enabled)
+	self._disableSearch = enabled == false
+	if self._searchButton then
+		self._searchButton.Visible = not self._disableSearch
+	end
+	return self
+end
+function WindowLayout:SetGlobalSearch(enabled)
+	self._globalSearch = enabled ~= false
+	return self
+end
+function WindowLayout:SetSearchbarSize(size)
+	if size ~= nil and type(size) ~= "number" and typeof(size) ~= "UDim2" then
+		error("[BobloUI] Window:SetSearchbarSize expects number, UDim2, or nil.", 2)
+	end
+	self._searchbarSize = size
+	return self
+end
+function WindowLayout:SetTabSwipe(offset, from)
+	local transition = table.clone(self._tabTransition or {})
+	transition.Offset = math.max(0, tonumber(offset) or tonumber(transition.Offset) or 10)
+	transition.Direction = from or transition.Direction or "Right"
+	return self:SetTabTransition(transition)
+end
+function WindowLayout:SetFont(font)
+	local previous = self.Fonts
+	local nextFonts
+	if type(font) == "table" then
+		nextFonts = {
+			Regular = font.Regular or previous.Regular,
+			Medium = font.Medium or font.Regular or previous.Medium,
+			Bold = font.Bold or font.Medium or font.Regular or previous.Bold,
+			Heavy = font.Heavy or font.Bold or font.Medium or font.Regular or previous.Heavy,
+		}
+	else
+		local resolved = font
+		if type(font) == "string" then
+			local ok, enum = pcall(function()
+				return Enum.Font[font]
+			end)
+			resolved = if ok then enum else nil
+		end
+		if typeof(resolved) ~= "EnumItem" or resolved.EnumType ~= Enum.Font then
+			error("[BobloUI] Window:SetFont expects Enum.Font, font name, or font table.", 2)
+		end
+		nextFonts = { Regular = resolved, Medium = resolved, Bold = resolved, Heavy = resolved }
+	end
+	local replacements = {
+		[previous.Regular] = nextFonts.Regular,
+		[previous.Medium] = nextFonts.Medium,
+		[previous.Bold] = nextFonts.Bold,
+		[previous.Heavy] = nextFonts.Heavy,
+	}
+	self.Fonts = nextFonts
+	for _, screen in { self.Layers.Root, self.Layers.Overlay, self.Layers.Toast } do
+		for _, instance in screen:GetDescendants() do
+			if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+				instance.Font = replacements[instance.Font] or nextFonts.Regular
+			end
+		end
+	end
+	return self
+end
+function WindowLayout:GetFont()
+	return table.clone(self.Fonts)
 end
 function WindowLayout:SetCornerRadius(radius)
 	if type(radius) == "boolean" then
@@ -20250,6 +23691,10 @@ function WindowLayout:GetGeometry()
 		Scale = self._scale,
 		Locked = self._locked,
 		Remember = self._rememberGeometry,
+		SidebarWidth = self._sidebarWidth,
+		SidebarHidden = self._sidebarHidden,
+		Compact = self:IsCompact(),
+		SidebarCompacted = self:IsSidebarCompacted(),
 	}
 end
 function WindowLayout:ResetGeometry()
@@ -20260,6 +23705,10 @@ function WindowLayout:ResetGeometry()
 	end
 	self:SetScale(1)
 	self:SetLocked(false)
+	self:SetCompact(false)
+	self:SetSidebarCompacted(false)
+	self:SetSidebarWidth(self.Tokens:Get("SidebarWidth"))
+	self:SetSidebarHidden(false)
 	return self
 end
 function WindowLayout:Minimize()
