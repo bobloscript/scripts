@@ -1,7 +1,7 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T05:46:08.037Z
+	Built: 2026-08-25T05:54:26.806Z
 	Modules: 66
 ]]
 local __modules = {}
@@ -61,6 +61,7 @@ function Base.init(self, section, typeName, options, config)
 	self._dependencyVisible = true
 	self._manualDisabled = (options.Disabled == true or type(options.Disabled) == "string")
 	self._dependencyEnabled = true
+	self._disabled = self._manualDisabled
 	self._disabledReason = type(options.Disabled) == "string" and options.Disabled or nil
 	self._loading = false
 	self._tooltip = options.Tooltip
@@ -607,7 +608,7 @@ function Base:SetDisabled(v, reason)
 	return self
 end
 function Base:IsDisabled()
-	return self._disabled == true
+	return self._manualDisabled or not self._dependencyEnabled
 end
 function Base:SetLoading(v)
 	self._loading = v == true
@@ -9183,6 +9184,23 @@ function DialogSection:_removeControl(c)
 	local p = table.find(self._controls, c)
 	if p then
 		table.remove(self._controls, p)
+	end
+	self:_refreshSeparators()
+end
+function DialogSection:_controlParent()
+	return self._content
+end
+function DialogSection:_refreshSeparators()
+	local visible = {}
+	for _, control in self._controls do
+		if control._root and control._root.Visible then
+			table.insert(visible, control)
+		end
+	end
+	for i, control in visible do
+		if control._separator then
+			control._separator.Visible = i < #visible
+		end
 	end
 end
 function DialogSection:AddButton(o)
