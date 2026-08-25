@@ -1,8 +1,8 @@
 --[[
 	BobloUI v0.11.5-beta.1 - generated bundle, do not edit.
 	Source: https://github.com/bobloscript/scripts/blob/main/BobloUI.lua
-	Built: 2026-08-25T08:02:18.682Z
-	Modules: 67
+	Built: 2026-08-25T09:00:15.369Z
+	Modules: 65
 
 THIRD-PARTY LICENSE NOTICES
 
@@ -3397,8 +3397,6 @@ local Build = __require("schema/Build")
 local Icon = __require("primitives/Icon")
 local Dark = __require("themes/Dark")
 local Light = __require("themes/Light")
-local OLED = __require("themes/OLED")
-local Midnight = __require("themes/Midnight")
 local Settings = __require("services/Settings")
 local Sound = __require("services/Sound")
 local Navigation = __require("services/Navigation")
@@ -3499,6 +3497,7 @@ local WINDOW_OPTIONS = {
 	"SidebarHidden",
 	"CornerRadius",
 	"FooterHeight",
+	"FooterText",
 	"Opacity",
 	"BackgroundImage",
 	"BackgroundImageTransparency",
@@ -3531,6 +3530,16 @@ local function checkOptions(options)
 	end
 end
 
+local function normalizeBundledTheme(name, theme)
+	if name ~= "Midnight" and name ~= "OLED" then
+		return name
+	end
+	if theme and table.find(theme:List(), name) then
+		return name
+	end
+	return "Dark"
+end
+
 function BobloUI:CreateWindow(options)
 	checkOptions(options)
 	local id = options.Id or Util.slug(options.Title)
@@ -3547,11 +3556,11 @@ function BobloUI:CreateWindow(options)
 	local tokens = Tokens.new(options.Density or "Comfortable", device.Class)
 	janitor:Add(tokens)
 	local theme = Theme.new({
-		Palettes = { Dark = Dark, Light = Light, Midnight = Midnight, OLED = OLED },
+		Palettes = { Dark = Dark, Light = Light },
 		Accent = options.Accent,
 	})
 	janitor:Add(theme)
-	theme:Set(options.Theme or "Dark")
+	theme:Set(normalizeBundledTheme(options.Theme or "Dark", theme))
 	if options.HighContrast then
 		theme:SetHighContrast(true)
 	end
@@ -3788,7 +3797,7 @@ function BobloUI:CreateWindow(options)
 
 	local unloaded = false
 	function window:SetTheme(name)
-		theme:Set(name)
+		theme:Set(normalizeBundledTheme(name, theme))
 		return self
 	end
 	function window:SetAccent(colour)
@@ -3847,6 +3856,10 @@ function BobloUI:CreateWindow(options)
 			end
 			data = res
 		end
+		if type(data) == "table" and data.Theme then
+			data = table.clone(data)
+			data.Theme = normalizeBundledTheme(data.Theme, theme)
+		end
 		return theme:Import(data)
 	end
 	function window:SetLocale(name)
@@ -3860,6 +3873,9 @@ function BobloUI:CreateWindow(options)
 			if entry.Handle and entry.Handle._refreshText then
 				entry.Handle:_refreshText()
 			end
+		end
+		if self._refreshFooterText then
+			self:_refreshFooterText()
 		end
 		search:Reindex()
 		return self
@@ -11080,6 +11096,7 @@ function Surface.new(window, props, options)
 		local stroke = Create.New("UIStroke", {
 			Thickness = options.StrokeThickness or window.Tokens:Get("Stroke"),
 			Transparency = if options.StrokeTransparency == nil then 0.18 else options.StrokeTransparency,
+			LineJoinMode = Enum.LineJoinMode.Round,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 			Parent = frame,
 		})
@@ -11762,12 +11779,7 @@ return {
 		},
 		["ColorPicker"] = {
 			["Method"] = "AddColorPicker",
-			["Options"] = {
-				["Default"] = "Color3?",
-				["Alpha"] = "boolean?",
-				["DefaultAlpha"] = "number?",
-				["Presets"] = "table?",
-			},
+			["Options"] = { ["Default"] = "Color3?", ["Alpha"] = "boolean?", ["DefaultAlpha"] = "number?", ["Presets"] = "table?" },
 			["Required"] = { "Title" },
 			["Stateful"] = true,
 		},
@@ -11812,12 +11824,7 @@ return {
 		},
 		["Image"] = {
 			["Method"] = "AddImage",
-			["Options"] = {
-				["Image"] = "string",
-				["Height"] = "number?",
-				["Caption"] = "string?",
-				["ScaleType"] = "EnumItem?",
-			},
+			["Options"] = { ["Image"] = "string", ["Height"] = "number?", ["Caption"] = "string?", ["ScaleType"] = "EnumItem?" },
 			["Required"] = { "Image" },
 			["Stateful"] = false,
 		},
@@ -12882,9 +12889,9 @@ function Config:Load(name)
 	end)
 
 	local meta = if type(data.meta) == "table" then data.meta else {}
-	if meta.themeData and self._window.Theme.Import then
+	if meta.themeData and self._window.ImportTheme then
 		pcall(function()
-			self._window.Theme:Import(meta.themeData)
+			self._window:ImportTheme(meta.themeData)
 		end)
 	elseif meta.theme then
 		pcall(function()
@@ -15701,7 +15708,6 @@ local THEME_TOKENS = {
 	"Error",
 	"Info",
 	"Scrim",
-	"Shadow",
 }
 
 local function clearSection(section)
@@ -16974,11 +16980,10 @@ function Section:_mount()
 	}, {
 		Token = if self._implicit then "Canvas" else "Surface",
 		Stroke = not self._implicit,
-		StrokeToken = "BorderSubtle",
-		StrokeTransparency = 0.48,
+		StrokeToken = "Border",
+		StrokeTransparency = 0.3,
 		Corner = if self._implicit then 0 else t:Get("CornerMd"),
-		Sheen = not self._implicit,
-		SheenTransparency = 0.32,
+		Sheen = false,
 	})
 	self._janitor:Add(self._root)
 	self._janitor:Add(self._root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
@@ -17010,7 +17015,12 @@ function Section:_mount()
 			Parent = self._root,
 		})
 		Create.New("UICorner", { CornerRadius = UDim.new(0, math.max(6, t:Get("CornerSm"))), Parent = self._header })
-		self._headerStroke = Create.New("UIStroke", { Thickness = 1, Transparency = 0.7, Parent = self._header })
+		self._headerStroke = Create.New("UIStroke", {
+			Thickness = 1,
+			Transparency = 0.5,
+			LineJoinMode = Enum.LineJoinMode.Round,
+			Parent = self._header,
+		})
 		w:_bind(self._header, { BackgroundColor3 = "SurfaceRaised" })
 		w:_bind(self._headerStroke, { Color = "BorderSubtle" })
 		self._headerAccent = Create.New("Frame", {
@@ -17574,11 +17584,11 @@ function Tab.new(window, options)
 		Position = UDim2.new(0, 6, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundTransparency = 0.92,
+		BackgroundTransparency = 0.82,
 		Parent = button,
 	})
 	New("UICorner", { CornerRadius = UDim.new(0, 7), Parent = avatarBack })
-	local avatarStroke = New("UIStroke", { Thickness = 1, Transparency = 0.86, Parent = avatarBack })
+	local avatarStroke = New("UIStroke", { Thickness = 1, Transparency = 0.68, Parent = avatarBack })
 	window:_bind(avatarBack, { BackgroundColor3 = "AccentSoft" })
 	window:_bind(avatarStroke, { Color = "AccentBorder" })
 
@@ -17863,9 +17873,13 @@ function Tab:_applySectionLayout(layout)
 	if available <= 0 then
 		available = math.max(0, math.floor((self._page.AbsoluteSize.X / scale) - (t:Get("PagePadding") * 2) + 0.5))
 	end
+	-- UIStroke touches the host edge when a card is positioned at x=0. A one-pixel
+	-- inset keeps every side visible even though SectionHost clips its descendants.
+	local edgeInset = 1
+	local layoutWidth = math.max(1, available - edgeInset * 2)
 	local gap = t:Get("ColumnGap")
 	local minWidth = t:Get("MinSectionWidth")
-	local twoColumn = (layout ~= "Drawer") and available >= math.max(t:Get("TwoColumnMinWidth"), minWidth * 2 + gap)
+	local twoColumn = (layout ~= "Drawer") and layoutWidth >= math.max(t:Get("TwoColumnMinWidth"), minWidth * 2 + gap)
 	self._twoColumn = twoColumn
 	if self._column1 then
 		self._column1.Visible = false
@@ -17885,36 +17899,36 @@ function Tab:_applySectionLayout(layout)
 		return math.max(1, math.floor((physical / scale) + 0.5))
 	end
 	if not twoColumn then
-		local y = 0
+		local y = edgeInset
 		for _, sec in visible do
-			sec._root.Size = UDim2.fromOffset(available, 0)
-			sec._root.Position = UDim2.fromOffset(0, y)
+			sec._root.Size = UDim2.fromOffset(layoutWidth, 0)
+			sec._root.Position = UDim2.fromOffset(edgeInset, y)
 			y += heightOf(sec) + gap
 		end
-		self._sectionHost.Size = UDim2.new(1, -(t:Get("PagePadding") * 2), 0, math.max(0, y - gap))
+		self._sectionHost.Size = UDim2.new(1, -(t:Get("PagePadding") * 2), 0, math.max(0, y - gap + edgeInset))
 		return
 	end
-	local leftWidth = math.max(1, math.floor((available - gap) / 2))
-	local rightWidth = math.max(1, available - gap - leftWidth)
-	local y = 0
+	local leftWidth = math.max(1, math.floor((layoutWidth - gap) / 2))
+	local rightWidth = math.max(1, layoutWidth - gap - leftWidth)
+	local y = edgeInset
 	local index = 1
 	while index <= #visible do
 		local first = visible[index]
 		local firstFull = first.Span == 2 or (first.Span == "Auto" and #visible == 1)
 		if firstFull then
-			first._root.Size = UDim2.fromOffset(available, 0)
-			first._root.Position = UDim2.fromOffset(0, y)
+			first._root.Size = UDim2.fromOffset(layoutWidth, 0)
+			first._root.Position = UDim2.fromOffset(edgeInset, y)
 			y += heightOf(first) + gap
 			index += 1
 		else
 			local second = visible[index + 1]
 			local secondFull = second and (second.Span == 2)
 			first._root.Size = UDim2.fromOffset(leftWidth, 0)
-			first._root.Position = UDim2.fromOffset(0, y)
+			first._root.Position = UDim2.fromOffset(edgeInset, y)
 			local rowHeight = heightOf(first)
 			if second and not secondFull then
 				second._root.Size = UDim2.fromOffset(rightWidth, 0)
-				second._root.Position = UDim2.fromOffset(leftWidth + gap, y)
+				second._root.Position = UDim2.fromOffset(edgeInset + leftWidth + gap, y)
 				rowHeight = math.max(rowHeight, heightOf(second))
 				index += 2
 			else
@@ -17923,7 +17937,7 @@ function Tab:_applySectionLayout(layout)
 			y += rowHeight + gap
 		end
 	end
-	self._sectionHost.Size = UDim2.new(1, -(t:Get("PagePadding") * 2), 0, math.max(0, y - gap))
+	self._sectionHost.Size = UDim2.new(1, -(t:Get("PagePadding") * 2), 0, math.max(0, y - gap + edgeInset))
 end
 
 function Tab:AddSection(options)
@@ -18013,12 +18027,12 @@ function Tab:_applyNavVisual(hover: boolean)
 	})
 	if self._avatarBack then
 		self._window.Motion:Tween(self._avatarBack, "Fast", {
-			BackgroundTransparency = if selected then 0.48 elseif hover then 0.78 else 0.92,
+			BackgroundTransparency = if selected then 0.4 elseif hover then 0.68 else 0.82,
 		})
 	end
 	if self._avatarStroke then
 		self._window.Motion:Tween(self._avatarStroke, "Fast", {
-			Transparency = if selected then 0.28 elseif hover then 0.62 else 0.86,
+			Transparency = if selected then 0.22 elseif hover then 0.48 else 0.68,
 		})
 	end
 end
@@ -18033,7 +18047,7 @@ function Tab:_setSelected(selected: boolean)
 
 	local theme = self._window.Theme
 	self._label.TextColor3 = theme:Get(if selected then "Text" else "TextSecondary")
-	Icon.setColor(self._avatar, theme:Get(if selected then "Accent" else "AccentMuted"))
+	Icon.setColor(self._avatar, theme:Get(if selected then "Accent" else "TextSecondary"))
 	if self._pageIcon then
 		Icon.setColor(self._pageIcon, theme:Get("Accent"))
 	end
@@ -18568,7 +18582,8 @@ function Window.new(context, options)
 		_rememberGeometry = options.RememberGeometry ~= false,
 		_sidebarHidden = options.SidebarHidden == true,
 		_cornerRadius = options.CornerRadius or context.Tokens:Get("CornerLg"),
-		_footerHeight = options.FooterHeight or 18,
+		_footerHeight = math.max(26, math.floor(tonumber(options.FooterHeight) or 28)),
+		_footerTextValue = options.FooterText,
 		_windowOpacity = math.clamp(tonumber(options.Opacity) or 1, 0.25, 1),
 		_tabTransition = options.TabTransition or { Style = "Slide", Duration = 0.12 },
 		_windowAnimation = options.WindowAnimation or { Style = "Slide", Duration = 0.12, Offset = 8 },
@@ -18682,14 +18697,9 @@ function Window:_build()
 	})
 	self._janitor:Add(self._root)
 	self._rootCorner = New("UICorner", { CornerRadius = UDim.new(0, self._cornerRadius), Parent = self._root })
-	self._rootHalo = New("UIStroke", {
-		Thickness = 7,
-		Transparency = 0.78,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = self._root,
-	})
 	self._rootStroke = New("UIStroke", {
 		Thickness = tokens:Get("Stroke"),
+		LineJoinMode = Enum.LineJoinMode.Round,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = self._root,
 	})
@@ -18706,9 +18716,12 @@ function Window:_build()
 		ZIndex = 1,
 		Parent = self._root,
 	})
-	self._rootStroke.Transparency = 0.42
+	self._backgroundImageCorner = New("UICorner", {
+		CornerRadius = UDim.new(0, self._cornerRadius),
+		Parent = self._backgroundImage,
+	})
+	self._rootStroke.Transparency = 0.25
 	self:_bind(self._rootStroke, { Color = "BorderStrong" })
-	self:_bind(self._rootHalo, { Color = "Shadow" })
 
 	self:_buildHeader()
 	self:_buildBody()
@@ -18729,6 +18742,10 @@ function Window:_build()
 		ZIndex = 50,
 		Visible = false,
 		Parent = self._root,
+	})
+	self._flashCorner = New("UICorner", {
+		CornerRadius = UDim.new(0, self._cornerRadius),
+		Parent = self._flash,
 	})
 	self._janitor:Add(self._flash)
 
@@ -18987,6 +19004,10 @@ function WindowChrome:_buildHeader()
 		Size = UDim2.new(1, 0, 0, tokens:Get("HeaderHeight")),
 		BorderSizePixel = 0,
 		Parent = self._root,
+	})
+	self._headerCorner = New("UICorner", {
+		CornerRadius = UDim.new(0, self._cornerRadius),
+		Parent = self._header,
 	})
 	self:_bind(self._header, { BackgroundColor3 = "Canvas" })
 
@@ -19251,6 +19272,10 @@ function WindowChrome:_buildFooter()
 		BorderSizePixel = 0,
 		Parent = self._root,
 	})
+	self._footerCorner = New("UICorner", {
+		CornerRadius = UDim.new(0, self._cornerRadius),
+		Parent = self._footer,
+	})
 	self:_bind(self._footer, { BackgroundColor3 = "Canvas" })
 	self._footerLine = New("Frame", {
 		Name = "Divider",
@@ -19261,18 +19286,51 @@ function WindowChrome:_buildFooter()
 	})
 	self._footerLine.BackgroundTransparency = 0.45
 	self:_bind(self._footerLine, { BackgroundColor3 = "BorderSubtle" })
-	self._footerHint = New("TextLabel", {
-		Name = "ResizeHint",
-		Size = UDim2.new(1, -62, 1, 0),
+	self._footerText = New("TextLabel", {
+		Name = "FooterText",
+		Size = UDim2.new(1, -112, 1, 0),
 		Position = UDim2.fromOffset(12, 0),
 		BackgroundTransparency = 1,
 		Font = self.Fonts.Regular,
 		TextSize = self.Tokens:Get("FontCaption"),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Text = "Drag corner to resize",
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
 		Parent = self._footer,
 	})
-	self:_bind(self._footerHint, { TextColor3 = "TextTertiary" })
+	self:_bind(self._footerText, { TextColor3 = "TextTertiary" })
+	self._footerHint = New("TextLabel", {
+		Name = "ResizeHint",
+		Size = UDim2.fromOffset(52, self._footerHeight),
+		Position = UDim2.new(1, -42, 0, 0),
+		AnchorPoint = Vector2.new(1, 0),
+		BackgroundTransparency = 1,
+		Font = self.Fonts.Medium,
+		TextSize = self.Tokens:Get("FontCaption"),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "Resize",
+		Parent = self._footer,
+	})
+	self:_bind(self._footerHint, { TextColor3 = "TextSecondary" })
+	self:_refreshFooterText()
+end
+
+function WindowChrome:_refreshFooterText()
+	if self._footerText then
+		self._footerText.Text = if self._footerTextValue == nil
+			then ""
+			else self.Locale:Resolve(tostring(self._footerTextValue))
+	end
+end
+
+function WindowChrome:SetFooterText(text)
+	self._footerTextValue = if text == nil or text == false then nil else tostring(text)
+	self:_refreshFooterText()
+	return self
+end
+
+function WindowChrome:GetFooterText()
+	return self._footerTextValue
 end
 
 function WindowChrome:_refreshChromeIcons()
@@ -19805,45 +19863,51 @@ end
 function WindowLayout:_buildResizeGrip()
 	self._grip = New("TextButton", {
 		Name = "ResizeGrip",
-		Size = UDim2.fromOffset(52, self._footerHeight),
+		Size = UDim2.fromOffset(32, self._footerHeight - 4),
 		Position = UDim2.new(1, -4, 0.5, 0),
 		AnchorPoint = Vector2.new(1, 0.5),
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Text = "",
 		ZIndex = 5,
 		Parent = self._footer,
 	})
-	-- A crisp, conventional bottom-right resize mark. The old three diagonal
-	-- strokes were offset from one another and looked crooked at small scales.
-	local horizontal = New("Frame", {
-		Size = UDim2.fromOffset(13, 1.5),
-		Position = UDim2.new(1, -8, 1, -4),
-		AnchorPoint = Vector2.new(1, 1),
-		BorderSizePixel = 0,
-		Parent = self._grip,
-	})
-	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = horizontal })
-	self:_bind(horizontal, { BackgroundColor3 = "TextSecondary" })
-	local vertical = New("Frame", {
-		Size = UDim2.fromOffset(1.5, 13),
-		Position = UDim2.new(1, -4, 1, -8),
-		AnchorPoint = Vector2.new(1, 1),
-		BorderSizePixel = 0,
-		Parent = self._grip,
-	})
-	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = vertical })
-	self:_bind(vertical, { BackgroundColor3 = "TextSecondary" })
-	local diagonal = New("Frame", {
-		Size = UDim2.fromOffset(8, 1.5),
-		Position = UDim2.new(1, -10, 1, -10),
+	New("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self._grip })
+	self:_bind(self._grip, { BackgroundColor3 = "ControlHover" })
+	local glyph = New("Frame", {
+		Name = "CornerGlyph",
+		Size = UDim2.fromOffset(18, 18),
+		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Rotation = -45,
-		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
 		Parent = self._grip,
 	})
-	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = diagonal })
-	self:_bind(diagonal, { BackgroundColor3 = "TextSecondary" })
+	for index, spec in
+		{
+			{ Length = 12, Position = UDim2.fromOffset(10, 10) },
+			{ Length = 8, Position = UDim2.fromOffset(12, 12) },
+			{ Length = 4, Position = UDim2.fromOffset(14, 14) },
+		}
+	do
+		local line = New("Frame", {
+			Name = `GripLine{index}`,
+			Size = UDim2.fromOffset(spec.Length, 2),
+			Position = spec.Position,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Rotation = -45,
+			BorderSizePixel = 0,
+			Parent = glyph,
+		})
+		New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = line })
+		self:_bind(line, { BackgroundColor3 = "TextSecondary" })
+	end
+	self._janitor:Add(self._grip.MouseEnter:Connect(function()
+		self._grip.BackgroundTransparency = 0.8
+	end))
+	self._janitor:Add(self._grip.MouseLeave:Connect(function()
+		self._grip.BackgroundTransparency = 1
+	end))
 
 	self._janitor:Add(self._grip.InputBegan:Connect(function(input)
 		if self._layout == "Drawer" or self._locked then
@@ -19986,20 +20050,15 @@ function WindowLayout:_applyTokens()
 		self._footer.Size = UDim2.new(1, 0, 0, self._footerHeight)
 		self._footer.Position = UDim2.new(0, 0, 1, -self._footerHeight)
 	end
-	if self._rootCorner then
-		self._rootCorner.CornerRadius = UDim.new(0, self._cornerRadius)
-	end
-	if self._headerCorner then
-		self._headerCorner.CornerRadius = UDim.new(0, self._cornerRadius)
-	end
-	if self._footerCorner then
-		self._footerCorner.CornerRadius = UDim.new(0, self._cornerRadius)
-	end
+	self:_applyCornerRadius()
 
 	self._titleLabel.TextSize = tokens:Get("FontTitle")
 	self._subtitleLabel.TextSize = tokens:Get("FontSmall")
 	if self._footerHint then
 		self._footerHint.TextSize = tokens:Get("FontCaption")
+	end
+	if self._footerText then
+		self._footerText.TextSize = tokens:Get("FontCaption")
 	end
 	self._rootStroke.Thickness = tokens:Get("Stroke")
 
@@ -20137,11 +20196,25 @@ function WindowLayout:SetCornerRadius(radius)
 		error("[BobloUI] Window:SetCornerRadius expects number.", 2)
 	end
 	self._cornerRadius = math.max(0, math.floor(radius + 0.5))
-	local value = UDim.new(0, self._cornerRadius)
-	if self._rootCorner then
-		self._rootCorner.CornerRadius = value
-	end
+	self:_applyCornerRadius()
 	return self
+end
+
+function WindowLayout:_applyCornerRadius()
+	local value = UDim.new(0, self._cornerRadius)
+	for _, corner in
+		{
+			self._rootCorner,
+			self._headerCorner,
+			self._footerCorner,
+			self._backgroundImageCorner,
+			self._flashCorner,
+		}
+	do
+		if corner then
+			corner.CornerRadius = value
+		end
+	end
 end
 function WindowLayout:SetRounded(enabled)
 	return self:SetCornerRadius(enabled and self.Tokens:Get("CornerLg") or 0)
@@ -20240,7 +20313,6 @@ return {
 	Error = hex("#F06469"),
 	Info = hex("#58B9FF"),
 	Scrim = hex("#050608"),
-	Shadow = hex("#000000"),
 }
 
 end
@@ -20275,78 +20347,6 @@ return {
 	Error = hex("#D84A50"),
 	Info = hex("#147FBE"),
 	Scrim = hex("#15181D"),
-	Shadow = hex("#101216"),
-}
-
-end
-
-__modules["themes/Midnight"] = function()
---!nonstrict
--- Blue-black preset: darker than Dark, softer than OLED.
-local hex = Color3.fromHex
-return {
-	Canvas = hex("#070912"),
-	Background = hex("#070912"),
-	Sidebar = hex("#090C16"),
-	Surface = hex("#0D1120"),
-	SurfaceRaised = hex("#101526"),
-	SurfaceInset = hex("#090D18"),
-	SurfaceSecondary = hex("#141A2C"),
-	SurfaceHover = hex("#171E33"),
-	SurfaceActive = hex("#1C2540"),
-	Control = hex("#101624"),
-	ControlHover = hex("#151D31"),
-	ControlPressed = hex("#1A2440"),
-	ControlInset = hex("#0A0F1B"),
-	BorderSubtle = hex("#1A2238"),
-	Border = hex("#25304B"),
-	BorderStrong = hex("#354261"),
-	Text = hex("#F4F6FF"),
-	TextSecondary = hex("#B0B9D0"),
-	TextTertiary = hex("#7D89A5"),
-	TextDisabled = hex("#505A72"),
-	Accent = hex("#7C84FF"),
-	Success = hex("#54D6A0"),
-	Warning = hex("#F0B95B"),
-	Error = hex("#EF6A78"),
-	Info = hex("#64B9FF"),
-	Scrim = hex("#03040A"),
-	Shadow = hex("#000000"),
-}
-
-end
-
-__modules["themes/OLED"] = function()
---!nonstrict
-local hex = Color3.fromHex
-return {
-	Canvas = hex("#000000"),
-	Background = hex("#000000"),
-	Sidebar = hex("#020203"),
-	Surface = hex("#070709"),
-	SurfaceRaised = hex("#09090C"),
-	SurfaceInset = hex("#030304"),
-	SurfaceSecondary = hex("#0D0D11"),
-	SurfaceHover = hex("#111116"),
-	SurfaceActive = hex("#17171E"),
-	Control = hex("#08080B"),
-	ControlHover = hex("#111116"),
-	ControlPressed = hex("#17171E"),
-	ControlInset = hex("#030304"),
-	BorderSubtle = hex("#17171D"),
-	Border = hex("#25252E"),
-	BorderStrong = hex("#383845"),
-	Text = hex("#FAFAFC"),
-	TextSecondary = hex("#B8B8C2"),
-	TextTertiary = hex("#858592"),
-	TextDisabled = hex("#555561"),
-	Accent = hex("#8172F2"),
-	Success = hex("#55D89A"),
-	Warning = hex("#F2B84B"),
-	Error = hex("#F06469"),
-	Info = hex("#58B9FF"),
-	Scrim = hex("#000000"),
-	Shadow = hex("#000000"),
 }
 
 end
