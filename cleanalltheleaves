@@ -1,0 +1,512 @@
+--[[
+    Leaf Auto (BobloUI)
+    Collect leaves + auto dropoff
+]]
+
+if getgenv().__LEAF then
+	getgenv().__LEAF.u()
+end
+
+local BobloUI = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/bobloscript/BobloUI/main/dist/BobloUI.min.lua"
+))()
+
+local HEADER_CREDIT = "Made with ❤ — bobloscript.com"
+
+local UI = BobloUI:CreateWindow({
+	Id = "leaf-auto",
+	Title = "Leaf Auto",
+	Subtitle = HEADER_CREDIT,
+	Theme = "Light",
+	Density = "Touch",
+	HighContrast = true,
+	FooterText = "",
+	ConfigFolder = "LeafAuto",
+	AutoLoad = true,
+})
+
+local hex = Color3.fromHex
+local Theme = {
+	Appearance = "Dark",
+	Canvas = hex("0A120C"),
+	Background = hex("101A14"),
+	Sidebar = hex("121E17"),
+	Surface = hex("18261D"),
+	SurfaceRaised = hex("1F3026"),
+	SurfaceInset = hex("0C1510"),
+	SurfaceSecondary = hex("1A2A21"),
+	SurfaceHover = hex("24382C"),
+	SurfaceActive = hex("2C4535"),
+	Control = hex("1F3026"),
+	ControlHover = hex("284033"),
+	ControlPressed = hex("325040"),
+	ControlInset = hex("0E1812"),
+	BorderSubtle = hex("1C2C22"),
+	Border = hex("334A3A"),
+	BorderStrong = hex("4E6E58"),
+	Text = hex("EAF5EE"),
+	TextSecondary = hex("A8C4B2"),
+	TextTertiary = hex("6E8F7A"),
+	TextDisabled = hex("4A6656"),
+	Accent = hex("6BCB77"),
+	AccentHover = hex("82D88C"),
+	AccentPressed = hex("54B560"),
+	TextOnAccent = hex("0A160E"),
+	Success = hex("3FCF8E"),
+	Warning = hex("EFB63A"),
+	Error = hex("E4585B"),
+	Info = hex("6FA8DC"),
+	Scrim = hex("050A07"),
+	ScrimTransparency = 0.45,
+}
+
+UI:RegisterTheme("Leaf", Theme)
+UI:SetTheme("Leaf")
+pcall(function()
+	if UI.Theme and UI.Theme.RememberPolarity then
+		UI.Theme:RememberPolarity("Dark", "Leaf")
+		UI.Theme:RememberPolarity("Light", "Light")
+	end
+end)
+pcall(function()
+	UI:SaveCustomTheme("Leaf", Theme)
+	if UI.SetDefaultTheme then
+		UI:SetDefaultTheme("Leaf")
+	end
+end)
+pcall(function()
+	UI:SetDensity("Touch")
+	UI:SetHighContrast(true)
+	if UI.SetFooterText then
+		UI:SetFooterText("")
+	end
+	if UI.SetSubtitle then
+		UI:SetSubtitle(HEADER_CREDIT)
+	end
+end)
+
+local function notify(title, content, variant, duration)
+	UI.Notify:Push({
+		Title = title,
+		Content = content,
+		Variant = variant or "Info",
+		Duration = duration or 3,
+	})
+end
+
+local function getState(id, fallback)
+	local ok, v = pcall(function()
+		return UI.State:Get(id)
+	end)
+	if ok and v ~= nil then
+		return v
+	end
+	return fallback
+end
+
+-- ===== Game utility =====
+local utility = {
+	Players = game:GetService("Players"),
+	Workspace = game:GetService("Workspace"),
+	ReplicatedStorage = game:GetService("ReplicatedStorage"),
+	RunService = game:GetService("RunService"),
+}
+
+function utility:desync(cf, delay)
+	if self.conn then
+		self.conn:Disconnect()
+		self.conn = nil
+	end
+
+	self.conn = self.RunService.Heartbeat:Connect(function()
+		local char = self.LocalPlayer.Character
+		if not char then
+			return
+		end
+
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hrp then
+			return
+		end
+
+		local oldcf = hrp.CFrame
+		hrp.CFrame = cf
+
+		self.RunService:BindToRenderStep("101", 101, function()
+			hrp.CFrame = oldcf
+			self.RunService:UnbindFromRenderStep("101")
+		end)
+	end)
+
+	task.delay(delay, function()
+		if self.conn then
+			self.conn:Disconnect()
+			self.conn = nil
+		end
+	end)
+end
+
+function utility:GetDropoffCFrame()
+	local s, r = pcall(function()
+		local d = self.Dumpsters:QueryDescendants("[$Arrow]")[1]
+		return d:GetPivot()
+	end)
+
+	if s and r then
+		return r
+	end
+
+	return nil
+end
+
+function utility:Dropoff()
+	local s, r = pcall(function()
+		local dropoff = self:GetDropoffCFrame()
+		if not dropoff then
+			return
+		end
+
+		self:desync(dropoff, 0.5)
+
+		task.wait(0.25)
+
+		local char = self.LocalPlayer.Character
+		if not char then
+			return
+		end
+
+		local myhrp = char:FindFirstChild("HumanoidRootPart")
+		if not myhrp then
+			return
+		end
+
+		self.EmptyBackpack:FireServer()
+
+		return true
+	end)
+
+	return s and r == true
+end
+
+function utility:GetAllLeaves()
+	local s, r = pcall(function()
+		return self.Leaves:GetChildren()
+	end)
+
+	if s and r then
+		return r
+	end
+
+	return {}
+end
+
+function utility:InventoryFull()
+	local s, r = pcall(function()
+		return self.LocalPlayer:GetAttribute("Leaves") >= self.LocalPlayer:GetAttribute("LeafCapacity")
+	end)
+
+	if s and r then
+		return r
+	end
+
+	return false
+end
+
+function utility:CollectLeave(idx)
+	pcall(function()
+		self.CollectLeaf:FireServer(idx)
+	end)
+end
+
+function utility:init()
+	self.LocalPlayer = self.Players.LocalPlayer
+	if not self.LocalPlayer then
+		return false, "failed to get localplayer"
+	end
+
+	self.Remotes = self.ReplicatedStorage:FindFirstChild("Remotes")
+	if not self.Remotes then
+		return false, "Failed to get remotes folder"
+	end
+
+	self.CollectLeaf = self.Remotes:FindFirstChild("CollectLeaf")
+	if not self.CollectLeaf then
+		return false, "Failed to get CollectLeaf remote"
+	end
+
+	self.EmptyBackpack = self.Remotes:FindFirstChild("EmptyBackpack")
+	if not self.EmptyBackpack then
+		return false, "Failed to get EmptyBackpack remote"
+	end
+
+	self.Map = self.Workspace:FindFirstChild("Map")
+	if not self.Map then
+		return false, "didnt get map"
+	end
+
+	self.Dumpsters = self.Map:FindFirstChild("Dumpsters")
+	if not self.Dumpsters then
+		return false, "didnt get Dumpsters"
+	end
+
+	self.Leaves = self.Workspace:FindFirstChild("Leaves")
+	if not self.Leaves then
+		return false, "failed to get Leaves"
+	end
+
+	return true
+end
+
+-- ===== Runtime =====
+local state = {
+	AutoCollect = false,
+	AutoDropoff = false,
+}
+
+local alive = true
+local unloaded = false
+local collected = 0
+local dropoffs = 0
+
+local okInit, errInit = utility:init()
+if not okInit then
+	notify("Leaf Auto", tostring(errInit), "Error", 6)
+	warn("[Leaf Auto]", errInit)
+end
+
+local Main = UI:AddTab({ Id = "main", Title = "Farm", Icon = "leaf" })
+local Credits = UI:AddTab({ Id = "credits", Title = "Credits", Icon = "heart" })
+
+local FarmSec = Main:AddSection({
+	Title = "Automation",
+	Description = "Collect nearby leaves · dropoff when full",
+	Icon = "zap",
+})
+local StatusSec = Main:AddSection({ Title = "Status", Icon = "activity" })
+
+local statusRow = StatusSec:AddStatus({
+	Title = "Script",
+	Value = okInit and "Ready" or "Init failed",
+	Status = okInit and "Success" or "Error",
+})
+local leavesRow = StatusSec:AddStatus({ Title = "Inventory", Value = "—", Status = "Info" })
+local collectRow = StatusSec:AddStatus({ Title = "Collected", Value = "0", Status = "Info" })
+local dropRow = StatusSec:AddStatus({ Title = "Dropoffs", Value = "0", Status = "Info" })
+
+FarmSec:AddToggle({
+	Id = "AutoCollect",
+	Title = "Auto Collect",
+	Description = "Picks up leaves in range via CollectLeaf",
+	Icon = "leaf",
+	Default = false,
+	Callback = function(v)
+		state.AutoCollect = v
+		statusRow:SetValue(v and "Collecting" or (state.AutoDropoff and "Dropoff only" or "Ready"))
+		statusRow:SetStatus((v or state.AutoDropoff) and "Success" or "Neutral")
+	end,
+})
+
+FarmSec:AddToggle({
+	Id = "AutoDropoff",
+	Title = "Auto Dropoff",
+	Description = "Desync to dumpster + EmptyBackpack when inventory is full",
+	Icon = "trash-2",
+	Default = false,
+	Callback = function(v)
+		state.AutoDropoff = v
+		statusRow:SetValue(state.AutoCollect and "Collecting" or (v and "Dropoff only" or "Ready"))
+		statusRow:SetStatus((state.AutoCollect or v) and "Success" or "Neutral")
+	end,
+})
+
+FarmSec:AddSlider({
+	Id = "CollectRange",
+	Title = "Collect range",
+	Icon = "radius",
+	Min = 5,
+	Max = 50,
+	Default = 10,
+	Step = 1,
+	Suffix = " studs",
+	ValueInput = true,
+})
+
+FarmSec:AddSlider({
+	Id = "CollectDelay",
+	Title = "Collect delay",
+	Icon = "timer",
+	Min = 0.01,
+	Max = 0.25,
+	Default = 0.02,
+	Step = 0.01,
+	Suffix = " s",
+})
+
+FarmSec:AddSlider({
+	Id = "DropoffInterval",
+	Title = "Dropoff check",
+	Icon = "clock",
+	Min = 0.2,
+	Max = 3,
+	Default = 0.66,
+	Step = 0.01,
+	Suffix = " s",
+})
+
+FarmSec:AddButton({
+	Title = "Dropoff once",
+	Text = "Drop",
+	Icon = "package",
+	Callback = function()
+		task.spawn(function()
+			local ok = utility:Dropoff()
+			if ok then
+				dropoffs += 1
+				dropRow:SetValue(tostring(dropoffs))
+				notify("Dropoff", "Done", "Success", 2)
+			else
+				notify("Dropoff", "Failed / no dumpster", "Warning", 3)
+			end
+		end)
+	end,
+})
+
+-- Credits
+local CreditsInfo = Credits:AddSection({ Title = "Credits", Icon = "info" })
+local CreditsActions = Credits:AddSection({ Title = "Actions", Icon = "settings-2" })
+
+CreditsInfo:AddParagraph({
+	Title = "Script Dev",
+	Content = "l10scripts",
+	Icon = "user",
+})
+CreditsInfo:AddParagraph({
+	Title = "UI Lib",
+	Content = "BobloUI",
+	Icon = "layout-dashboard",
+})
+CreditsInfo:AddParagraph({
+	Title = "Lib Dev",
+	Content = "bobloscript.com",
+	Icon = "globe",
+})
+
+local function unload()
+	if unloaded then
+		return
+	end
+	unloaded = true
+	alive = false
+	state.AutoCollect = false
+	state.AutoDropoff = false
+	if utility.conn then
+		pcall(function()
+			utility.conn:Disconnect()
+		end)
+		utility.conn = nil
+	end
+	pcall(function()
+		utility.RunService:UnbindFromRenderStep("101")
+	end)
+	pcall(function()
+		UI:Unload()
+	end)
+	getgenv().__LEAF = nil
+end
+
+CreditsActions:AddButton({
+	Title = "Unload script",
+	Text = "Unload",
+	Icon = "power",
+	Variant = "Danger",
+	Callback = function()
+		local dialog = UI.Dialog:Confirm({
+			Title = "Unload?",
+			Content = "Stops collect / dropoff loops.",
+			Danger = true,
+		})
+		task.spawn(function()
+			if dialog:Await() then
+				unload()
+			end
+		end)
+	end,
+})
+
+-- Loops
+task.spawn(function()
+	while alive do
+		local delaySec = tonumber(getState("CollectDelay", 0.02)) or 0.02
+		if state.AutoCollect and okInit and not utility:InventoryFull() then
+			local range = tonumber(getState("CollectRange", 10)) or 10
+			local leaves = utility:GetAllLeaves()
+			for idx, leave in ipairs(leaves) do
+				if not alive or not state.AutoCollect then
+					break
+				end
+				if utility:InventoryFull() then
+					break
+				end
+				local pos = leave and (leave:IsA("BasePart") and leave.Position or leave:GetPivot().Position)
+				if pos and utility.LocalPlayer:DistanceFromCharacter(pos) < range then
+					utility:CollectLeave(idx)
+					collected += 1
+					collectRow:SetValue(tostring(collected))
+					task.wait(delaySec)
+				end
+			end
+		end
+		task.wait(0.01)
+	end
+end)
+
+task.spawn(function()
+	while alive do
+		local interval = tonumber(getState("DropoffInterval", 0.66)) or 0.66
+		if state.AutoDropoff and okInit and utility:InventoryFull() then
+			local ok = utility:Dropoff()
+			if ok then
+				dropoffs += 1
+				dropRow:SetValue(tostring(dropoffs))
+			end
+		end
+		task.wait(interval)
+	end
+end)
+
+task.spawn(function()
+	while alive do
+		if okInit and utility.LocalPlayer then
+			local leaves = utility.LocalPlayer:GetAttribute("Leaves")
+			local cap = utility.LocalPlayer:GetAttribute("LeafCapacity")
+			if leaves ~= nil and cap ~= nil then
+				leavesRow:SetValue(tostring(leaves) .. " / " .. tostring(cap))
+				leavesRow:SetStatus(leaves >= cap and "Warning" or "Info")
+			end
+		end
+		task.wait(0.35)
+	end
+end)
+
+game:GetService("UserInputService").InputBegan:Connect(function(input, gp)
+	if gp then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.End then
+		unload()
+	end
+end)
+
+getgenv().__LEAF = {
+	S = state,
+	u = unload,
+	UI = UI,
+	util = utility,
+}
+
+if okInit then
+	notify("Leaf Auto", "Loaded · End to unload", "Success", 4)
+	print("[Leaf Auto] loaded")
+else
+	print("[Leaf Auto] init failed:", errInit)
+end
