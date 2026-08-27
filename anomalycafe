@@ -1,0 +1,523 @@
+--[[
+    Anomaly Cafe Auto (BobloUI)
+    PlaceId: 121781732399469
+    Features: ESP Anomaly · Auto Cook · Auto Grab Coffee
+]]
+
+if getgenv().__ANOMALY then
+	getgenv().__ANOMALY.u()
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+player.CharacterAdded:Connect(function(newChar)
+	character = newChar
+	humanoid = character:WaitForChild("Humanoid")
+	rootPart = character:WaitForChild("HumanoidRootPart")
+end)
+
+local BobloUI = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/bobloscript/BobloUI/main/dist/BobloUI.min.lua"
+))()
+
+local HEADER_CREDIT = "Made with ❤ — bobloscript.com"
+
+local UI = BobloUI:CreateWindow({
+	Id = "anomaly-cafe-auto",
+	Title = "Anomaly Cafe",
+	Subtitle = HEADER_CREDIT,
+	Theme = "Light",
+	Density = "Touch",
+	HighContrast = true,
+	FooterText = "",
+	ConfigFolder = "AnomalyCafeAuto",
+	AutoLoad = true,
+})
+
+local hex = Color3.fromHex
+local Theme = {
+	Appearance = "Dark",
+	Canvas = hex("100C0A"),
+	Background = hex("18120F"),
+	Sidebar = hex("1C1612"),
+	Surface = hex("241C17"),
+	SurfaceRaised = hex("2E241D"),
+	SurfaceInset = hex("120E0B"),
+	SurfaceSecondary = hex("281F19"),
+	SurfaceHover = hex("352A22"),
+	SurfaceActive = hex("403328"),
+	Control = hex("2E241D"),
+	ControlHover = hex("3A2E25"),
+	ControlPressed = hex("46382D"),
+	ControlInset = hex("14100C"),
+	BorderSubtle = hex("2A211B"),
+	Border = hex("4A3A2E"),
+	BorderStrong = hex("6E5644"),
+	Text = hex("F5EDE4"),
+	TextSecondary = hex("C4B09A"),
+	TextTertiary = hex("8A7664"),
+	TextDisabled = hex("5C4E42"),
+	Accent = hex("C47A3A"),
+	AccentHover = hex("D48E4E"),
+	AccentPressed = hex("A8662E"),
+	TextOnAccent = hex("1A1008"),
+	Success = hex("3FCF8E"),
+	Warning = hex("EFB63A"),
+	Error = hex("E4585B"),
+	Info = hex("6FA8DC"),
+	Scrim = hex("080604"),
+	ScrimTransparency = 0.45,
+}
+
+UI:RegisterTheme("AnomalyCafe", Theme)
+UI:SetTheme("AnomalyCafe")
+pcall(function()
+	if UI.Theme and UI.Theme.RememberPolarity then
+		UI.Theme:RememberPolarity("Dark", "AnomalyCafe")
+		UI.Theme:RememberPolarity("Light", "Light")
+	end
+end)
+pcall(function()
+	UI:SaveCustomTheme("AnomalyCafe", Theme)
+	if UI.SetDefaultTheme then
+		UI:SetDefaultTheme("AnomalyCafe")
+	end
+end)
+pcall(function()
+	UI:SetDensity("Touch")
+	UI:SetHighContrast(true)
+	if UI.SetFooterText then
+		UI:SetFooterText("")
+	end
+	if UI.SetSubtitle then
+		UI:SetSubtitle(HEADER_CREDIT)
+	end
+end)
+
+local function notify(title, content, variant, duration)
+	UI.Notify:Push({
+		Title = title,
+		Content = content,
+		Variant = variant or "Info",
+		Duration = duration or 3,
+	})
+end
+
+local function getState(id, fallback)
+	local ok, v = pcall(function()
+		return UI.State:Get(id)
+	end)
+	if ok and v ~= nil then
+		return v
+	end
+	return fallback
+end
+
+-- ===== State =====
+local state = {
+	ESPEnabled = true,
+	AutoCook = false,
+	AutoGrabCoffee = false,
+}
+
+local alive = true
+local unloaded = false
+
+local ESPHolder = Instance.new("Folder")
+ESPHolder.Name = "AnomalyESPHolder"
+ESPHolder.Parent = Workspace
+
+local trackedESP = {} -- [Model] = true
+
+local function clearESP()
+	for _, child in ipairs(ESPHolder:GetChildren()) do
+		child:Destroy()
+	end
+	table.clear(trackedESP)
+end
+
+local function createESP(target)
+	if not target or trackedESP[target] then
+		return
+	end
+	if target:FindFirstChild("ESP_Highlight") then
+		trackedESP[target] = true
+		return
+	end
+
+	local color = getState("ESPColor", Color3.fromRGB(255, 60, 60))
+	if typeof(color) ~= "Color3" then
+		color = Color3.fromRGB(255, 60, 60)
+	end
+	local fillT = tonumber(getState("ESPTransparency", 0.7)) or 0.7
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_Highlight"
+	highlight.Adornee = target
+	highlight.FillColor = color
+	highlight.FillTransparency = fillT
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.OutlineTransparency = 0.5
+	highlight.Parent = ESPHolder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESP_Label"
+	billboard.Adornee = target:IsA("Model") and (target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart")) or target
+	billboard.Size = UDim2.new(0, 120, 0, 28)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = ESPHolder
+
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.new(1, 0, 1, 0)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = "ANOMALY"
+	textLabel.TextColor3 = color
+	textLabel.TextSize = 12
+	textLabel.Font = Enum.Font.GothamBold
+	textLabel.Parent = billboard
+
+	trackedESP[target] = true
+end
+
+local ANOMALY_KEYS = { "anomal", "creature", "monster", "entity" }
+
+local function nameLooksAnomaly(name)
+	local lower = string.lower(name)
+	for _, key in ipairs(ANOMALY_KEYS) do
+		if lower:find(key, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function findAnomalies()
+	local range = tonumber(getState("ESPRange", 200)) or 200
+	local origin = rootPart and rootPart.Position
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if v:IsA("BasePart") and v.Parent and nameLooksAnomaly(v.Name) then
+			local model = v.Parent
+			if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChild("HumanoidRootPart") then
+				if not origin or (v.Position - origin).Magnitude <= range then
+					createESP(model)
+				end
+			end
+		elseif v:IsA("Model") and nameLooksAnomaly(v.Name) then
+			if v:FindFirstChildOfClass("Humanoid") or v:FindFirstChild("HumanoidRootPart") then
+				local hrp = v:FindFirstChild("HumanoidRootPart") or v:FindFirstChildWhichIsA("BasePart")
+				if hrp and (not origin or (hrp.Position - origin).Magnitude <= range) then
+					createESP(v)
+				end
+			end
+		end
+	end
+end
+
+local function partNameHas(part, ...)
+	local lower = string.lower(part.Name)
+	for i = 1, select("#", ...) do
+		if lower:find(select(i, ...), 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function fireClickOn(inst)
+	local detector = inst:FindFirstChildOfClass("ClickDetector")
+		or (inst.Parent and inst.Parent:FindFirstChildOfClass("ClickDetector"))
+	if detector and fireclickdetector then
+		pcall(fireclickdetector, detector)
+		return true
+	end
+	return false
+end
+
+local function autoCook()
+	if not rootPart then
+		return
+	end
+	local cookTime = tonumber(getState("CookTime", 3)) or 3
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if not alive or not state.AutoCook then
+			return
+		end
+		if v:IsA("BasePart") and partNameHas(v, "cook", "stove", "oven") then
+			rootPart.CFrame = v.CFrame + Vector3.new(0, 5, 0)
+			task.wait(cookTime)
+			fireClickOn(v)
+			task.wait(0.5)
+		end
+	end
+end
+
+local function autoGrabCoffee()
+	if not rootPart then
+		return
+	end
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if not alive or not state.AutoGrabCoffee then
+			return
+		end
+		if v:IsA("BasePart") and partNameHas(v, "coffee", "espresso") then
+			rootPart.CFrame = v.CFrame + Vector3.new(0, 5, 0)
+			task.wait(1)
+			fireClickOn(v)
+			task.wait(0.5)
+		end
+	end
+end
+
+-- ===== UI =====
+local Main = UI:AddTab({ Id = "main", Title = "Main", Icon = "coffee" })
+local Visuals = UI:AddTab({ Id = "visuals", Title = "Visuals", Icon = "eye" })
+local Credits = UI:AddTab({ Id = "credits", Title = "Credits", Icon = "heart" })
+
+local Actions = Main:AddSection({
+	Title = "Automation",
+	Description = "Cook & coffee helpers",
+	Icon = "zap",
+})
+local StatusSec = Main:AddSection({ Title = "Status", Icon = "activity" })
+
+local EspSec = Visuals:AddSection({
+	Title = "ESP",
+	Description = "Highlight anomalies",
+	Icon = "scan-search",
+})
+
+local statusRow = StatusSec:AddStatus({
+	Title = "Script",
+	Value = "Ready",
+	Status = "Success",
+})
+local espCountRow = StatusSec:AddStatus({
+	Title = "ESP targets",
+	Value = "0",
+	Status = "Info",
+})
+
+local function refreshStatus()
+	local bits = {}
+	if state.ESPEnabled then
+		table.insert(bits, "ESP")
+	end
+	if state.AutoCook then
+		table.insert(bits, "Cook")
+	end
+	if state.AutoGrabCoffee then
+		table.insert(bits, "Coffee")
+	end
+	if #bits == 0 then
+		statusRow:SetValue("Idle")
+		statusRow:SetStatus("Neutral")
+	else
+		statusRow:SetValue(table.concat(bits, " · "))
+		statusRow:SetStatus("Success")
+	end
+end
+
+Actions:AddToggle({
+	Id = "AutoCook",
+	Title = "Auto Cook",
+	Description = "TP to cook/stove/oven and click",
+	Icon = "flame",
+	Default = false,
+	Callback = function(v)
+		state.AutoCook = v
+		refreshStatus()
+	end,
+})
+
+Actions:AddToggle({
+	Id = "AutoGrabCoffee",
+	Title = "Auto Grab Coffee",
+	Description = "TP to coffee/espresso and click",
+	Icon = "coffee",
+	Default = false,
+	Callback = function(v)
+		state.AutoGrabCoffee = v
+		refreshStatus()
+	end,
+})
+
+Actions:AddSlider({
+	Id = "CookTime",
+	Title = "Cook wait",
+	Icon = "timer",
+	Min = 0.5,
+	Max = 10,
+	Default = 3,
+	Step = 0.5,
+	Suffix = " s",
+	ValueInput = true,
+})
+
+EspSec:AddToggle({
+	Id = "ESPEnabled",
+	Title = "ESP Anomaly",
+	Description = "Highlight anomaly / creature / monster / entity",
+	Icon = "eye",
+	Default = true,
+	Callback = function(v)
+		state.ESPEnabled = v
+		if not v then
+			clearESP()
+			espCountRow:SetValue("0")
+		end
+		refreshStatus()
+	end,
+})
+
+EspSec:AddSlider({
+	Id = "ESPRange",
+	Title = "ESP range",
+	Icon = "crosshair",
+	Min = 50,
+	Max = 500,
+	Default = 200,
+	Step = 10,
+	Suffix = " studs",
+	ValueInput = true,
+})
+
+EspSec:AddSlider({
+	Id = "ESPTransparency",
+	Title = "ESP fill transparency",
+	Icon = "blend",
+	Min = 0,
+	Max = 1,
+	Default = 0.7,
+	Step = 0.05,
+})
+
+EspSec:AddColorPicker({
+	Id = "ESPColor",
+	Title = "ESP color",
+	Icon = "palette",
+	Default = Color3.fromRGB(255, 60, 60),
+})
+
+EspSec:AddButton({
+	Title = "Clear ESP",
+	Text = "Clear",
+	Icon = "eraser",
+	Callback = function()
+		clearESP()
+		espCountRow:SetValue("0")
+		notify("ESP", "Cleared", "Info", 2)
+	end,
+})
+
+-- Credits
+local CreditsInfo = Credits:AddSection({ Title = "Credits", Icon = "info" })
+local CreditsActions = Credits:AddSection({ Title = "Actions", Icon = "settings-2" })
+
+CreditsInfo:AddParagraph({
+	Title = "Script Dev",
+	Content = "Helloimverity",
+	Icon = "user",
+})
+CreditsInfo:AddParagraph({
+	Title = "UI Lib",
+	Content = "BobloUI",
+	Icon = "layout-dashboard",
+})
+CreditsInfo:AddParagraph({
+	Title = "Lib Dev",
+	Content = "bobloscript.com",
+	Icon = "globe",
+})
+
+local function unload()
+	if unloaded then
+		return
+	end
+	unloaded = true
+	alive = false
+	state.ESPEnabled = false
+	state.AutoCook = false
+	state.AutoGrabCoffee = false
+	clearESP()
+	pcall(function()
+		ESPHolder:Destroy()
+	end)
+	pcall(function()
+		UI:Unload()
+	end)
+	getgenv().__ANOMALY = nil
+end
+
+CreditsActions:AddButton({
+	Title = "Unload script",
+	Text = "Unload",
+	Icon = "power",
+	Variant = "Danger",
+	Callback = function()
+		local dialog = UI.Dialog:Confirm({
+			Title = "Unload?",
+			Content = "Stops ESP and automation loops.",
+			Danger = true,
+		})
+		task.spawn(function()
+			if dialog:Await() then
+				unload()
+			end
+		end)
+	end,
+})
+
+-- Loops
+task.spawn(function()
+	while alive do
+		if state.ESPEnabled then
+			findAnomalies()
+			local n = 0
+			for _ in pairs(trackedESP) do
+				n += 1
+			end
+			espCountRow:SetValue(tostring(n))
+		end
+		task.wait(0.25)
+	end
+end)
+
+task.spawn(function()
+	while alive do
+		if state.AutoCook then
+			pcall(autoCook)
+		end
+		if state.AutoGrabCoffee then
+			pcall(autoGrabCoffee)
+		end
+		task.wait(1)
+	end
+end)
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.End then
+		unload()
+	end
+end)
+
+getgenv().__ANOMALY = {
+	S = state,
+	u = unload,
+	UI = UI,
+}
+
+refreshStatus()
+notify("Anomaly Cafe", "Loaded · End to unload", "Success", 4)
+print("[Anomaly Cafe] BobloUI loaded")
