@@ -1,0 +1,441 @@
+--[[
+    Vehicle Fly (BobloUI)
+    Sit in a DriverSeat (Vehicles / ATVs) · toggle fly with V
+]]
+
+local genv = (getgenv and getgenv()) or _G
+
+if type(genv.__VF_SHUTDOWN) == "function" then
+	pcall(genv.__VF_SHUTDOWN)
+	task.wait(0.1)
+end
+if genv.__VF_RUNNING then
+	return
+end
+genv.__VF_RUNNING = true
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+pcall(function()
+	LocalPlayer:WaitForChild("PlayerGui", 10)
+end)
+
+local BobloUI = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/bobloscript/BobloUI/main/dist/BobloUI.min.lua"
+))()
+
+local HEADER_CREDIT = "Made with ❤ — bobloscript.com"
+
+local UI = BobloUI:CreateWindow({
+	Id = "vehicle-fly",
+	Title = "Vehicle Fly",
+	Subtitle = HEADER_CREDIT,
+	Theme = "Light",
+	Density = "Touch",
+	HighContrast = true,
+	FooterText = "",
+	ConfigFolder = "VehicleFly",
+	AutoLoad = true,
+})
+
+local hex = Color3.fromHex
+local Theme = {
+	Appearance = "Dark",
+	Canvas = hex("0B1018"),
+	Background = hex("121821"),
+	Sidebar = hex("151D28"),
+	Surface = hex("1A2432"),
+	SurfaceRaised = hex("223043"),
+	SurfaceInset = hex("0D131C"),
+	SurfaceSecondary = hex("1C2838"),
+	SurfaceHover = hex("2A3A4E"),
+	SurfaceActive = hex("33485E"),
+	Control = hex("223043"),
+	ControlHover = hex("2B3C52"),
+	ControlPressed = hex("354A62"),
+	ControlInset = hex("0F1620"),
+	BorderSubtle = hex("1C2836"),
+	Border = hex("35506A"),
+	BorderStrong = hex("4E7396"),
+	Text = hex("EAF2FA"),
+	TextSecondary = hex("A8BDD0"),
+	TextTertiary = hex("6E879C"),
+	TextDisabled = hex("4A5E70"),
+	Accent = hex("5EB8E8"),
+	AccentHover = hex("78C8F0"),
+	AccentPressed = hex("4AA4D4"),
+	TextOnAccent = hex("0A1218"),
+	Success = hex("3FCF8E"),
+	Warning = hex("EFB63A"),
+	Error = hex("E4585B"),
+	Info = hex("6FA8DC"),
+	Scrim = hex("060A10"),
+	ScrimTransparency = 0.45,
+}
+
+UI:RegisterTheme("VehicleFly", Theme)
+UI:SetTheme("VehicleFly")
+pcall(function()
+	if UI.Theme and UI.Theme.RememberPolarity then
+		UI.Theme:RememberPolarity("Dark", "VehicleFly")
+		UI.Theme:RememberPolarity("Light", "Light")
+	end
+end)
+pcall(function()
+	UI:SaveCustomTheme("VehicleFly", Theme)
+	if UI.SetDefaultTheme then
+		UI:SetDefaultTheme("VehicleFly")
+	end
+end)
+pcall(function()
+	UI:SetDensity("Touch")
+	UI:SetHighContrast(true)
+	if UI.SetFooterText then
+		UI:SetFooterText("")
+	end
+	if UI.SetSubtitle then
+		UI:SetSubtitle(HEADER_CREDIT)
+	end
+end)
+
+local function notify(title, content, variant, duration)
+	UI.Notify:Push({
+		Title = title,
+		Content = content,
+		Variant = variant or "Info",
+		Duration = duration or 3,
+	})
+end
+
+-- ===== State =====
+local conns = {}
+local statusRow
+local State = {
+	running = true,
+	enabled = false,
+	normalSpeed = 120,
+	boostSpeed = 240,
+	flyKey = Enum.KeyCode.V,
+}
+
+local function track(c)
+	table.insert(conns, c)
+	return c
+end
+
+local function setStatus(text, variant)
+	if statusRow then
+		pcall(function()
+			statusRow:SetValue(text)
+			if variant then
+				statusRow:SetStatus(variant)
+			end
+		end)
+	end
+end
+
+-- ===== Vehicle fly core =====
+local vehicles = Workspace:FindFirstChild("Vehicles") or Workspace:WaitForChild("Vehicles", 15)
+local atvs = Workspace:FindFirstChild("ATVs") or Workspace:WaitForChild("ATVs", 15)
+
+local activeVehicle
+local cameraTarget
+local cameraOffset
+local cameraTargetRotation
+local cameraDistance
+local savedCameraSubject
+
+local function getVehicle()
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local seat = humanoid and humanoid.SeatPart
+
+	if not seat or not seat:IsA("VehicleSeat") or seat.Name ~= "DriverSeat" then
+		return
+	end
+
+	local vehicle = seat.Parent
+	if vehicle and ((vehicles and vehicle.Parent == vehicles) or (atvs and vehicle.Parent == atvs)) then
+		return vehicle, seat
+	end
+	-- fallback: any DriverSeat vehicle in Workspace
+	if vehicle and vehicle:FindFirstChild("DriverSeat", true) then
+		return vehicle, seat
+	end
+end
+
+local function getDirection(camera)
+	local direction = Vector3.zero
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		direction += camera.CFrame.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		direction -= camera.CFrame.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		direction += camera.CFrame.RightVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		direction -= camera.CFrame.RightVector
+	end
+
+	return direction.Magnitude > 1 and direction.Unit or direction
+end
+
+local function resetCamera()
+	local camera = Workspace.CurrentCamera
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local subject = savedCameraSubject
+
+	if humanoid and not humanoid.SeatPart then
+		subject = humanoid
+	end
+
+	if subject and subject.Parent then
+		camera.CameraSubject = subject
+	elseif humanoid then
+		camera.CameraSubject = humanoid
+	end
+
+	if cameraTarget then
+		cameraTarget:Destroy()
+	end
+
+	activeVehicle = nil
+	cameraTarget = nil
+	cameraOffset = nil
+	cameraTargetRotation = nil
+	cameraDistance = nil
+	savedCameraSubject = nil
+end
+
+local function attachCamera(vehicle, seat)
+	local camera = Workspace.CurrentCamera
+	local subject = camera.CameraSubject
+	local source = typeof(subject) == "Instance" and subject:IsA("BasePart") and subject or seat
+	local target = Instance.new(source:IsA("VehicleSeat") and "VehicleSeat" or "Part")
+
+	target.Name = "VehicleFlyCamera"
+	target.Size = source.Size
+	target.Transparency = 1
+	target.Anchored = true
+	target.CanCollide = false
+	target.CanQuery = false
+	target.CanTouch = false
+	target.CFrame = source.CFrame
+	target.Parent = Workspace
+
+	savedCameraSubject = subject
+	cameraTarget = target
+	cameraOffset = vehicle:GetPivot():PointToObjectSpace(source.Position)
+	cameraTargetRotation = source.CFrame.Rotation
+	cameraDistance = (camera.CFrame.Position - camera.Focus.Position).Magnitude
+	camera.CameraSubject = target
+end
+
+local function setEnabled(on, fromUi)
+	State.enabled = on == true
+	if not State.enabled then
+		resetCamera()
+		setStatus("Off", "Neutral")
+		if not fromUi then
+			notify("Vehicle Fly", "Off", "Warning", 2)
+		end
+	else
+		setStatus("On · sit in DriverSeat", "Success")
+		if not fromUi then
+			notify("Vehicle Fly", "On · WASD fly · Shift boost · scroll zoom", "Success", 3)
+		end
+	end
+end
+
+track(UserInputService.InputBegan:Connect(function(input, typing)
+	if typing or not State.running then
+		return
+	end
+	if input.KeyCode == State.flyKey then
+		setEnabled(not State.enabled, false)
+		pcall(function()
+			if UI.State and UI.State.Set then
+				UI.State:Set("VehicleFlyEnabled", State.enabled)
+			end
+		end)
+	end
+end))
+
+track(UserInputService.InputChanged:Connect(function(input)
+	if not State.enabled or not cameraDistance then
+		return
+	end
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+		local zoomStep = math.max(1, cameraDistance * 0.15)
+		cameraDistance = math.clamp(
+			cameraDistance - input.Position.Z * zoomStep,
+			LocalPlayer.CameraMinZoomDistance,
+			LocalPlayer.CameraMaxZoomDistance
+		)
+	end
+end))
+
+track(RunService.RenderStepped:Connect(function(deltaTime)
+	if not State.running or not State.enabled then
+		return
+	end
+
+	local vehicle, seat = getVehicle()
+	if not vehicle then
+		if activeVehicle then
+			resetCamera()
+		end
+		return
+	end
+
+	local camera = Workspace.CurrentCamera
+	local pivot = vehicle:GetPivot()
+
+	if vehicle ~= activeVehicle then
+		resetCamera()
+		activeVehicle = vehicle
+		attachCamera(vehicle, seat)
+		setStatus("Flying · " .. vehicle.Name, "Success")
+	end
+
+	if not cameraTarget or not cameraTarget.Parent then
+		return
+	end
+
+	local focusPosition = camera.Focus.Position
+	local cameraOffsetFromFocus = camera.CFrame.Position - focusPosition
+
+	if cameraOffsetFromFocus.Magnitude > 0 and cameraDistance then
+		local cameraPosition = focusPosition + cameraOffsetFromFocus.Unit * cameraDistance
+		camera.CFrame = CFrame.new(cameraPosition) * camera.CFrame.Rotation
+	end
+
+	local direction = getDirection(camera)
+	local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and State.boostSpeed or State.normalSpeed
+	local position = pivot.Position + direction * speed * deltaTime
+
+	local targetPivot = CFrame.new(position) * camera.CFrame.Rotation
+	local targetPosition = targetPivot:PointToWorldSpace(cameraOffset)
+
+	vehicle:PivotTo(targetPivot)
+	cameraTarget.CFrame = CFrame.new(targetPosition) * cameraTargetRotation
+
+	local body = vehicle:FindFirstChild("Body")
+	local base = body and body:FindFirstChild("Base") or seat
+	if base and base:IsA("BasePart") then
+		base.AssemblyLinearVelocity = Vector3.zero
+		base.AssemblyAngularVelocity = Vector3.zero
+	end
+end))
+
+-- ===== UI =====
+local Main = UI:AddTab({ Id = "main", Title = "Fly", Icon = "plane" })
+local Credits = UI:AddTab({ Id = "credits", Title = "Credits", Icon = "heart" })
+
+local FlySec = Main:AddSection({
+	Title = "Vehicle Fly",
+	Icon = "car",
+	Description = "Sit in DriverSeat · V to toggle · WASD · Shift boost",
+})
+local SpeedSec = Main:AddSection({ Title = "Speed", Icon = "gauge" })
+local St = Main:AddSection({ Title = "Status", Icon = "activity" })
+
+statusRow = St:AddStatus({ Title = "Status", Value = "Off", Status = "Neutral" })
+
+FlySec:AddToggle({
+	Id = "VehicleFlyEnabled",
+	Title = "Vehicle Fly",
+	Description = "Also toggles with V",
+	Icon = "plane",
+	Default = false,
+	Callback = function(v)
+		setEnabled(v, true)
+	end,
+})
+
+FlySec:AddParagraph({
+	Title = "Controls",
+	Content = "V — toggle fly\nWASD — move\nLeft Shift — boost\nMouse wheel — zoom while flying",
+	Icon = "keyboard",
+})
+
+SpeedSec:AddSlider({
+	Id = "NormalSpeed",
+	Title = "Normal speed",
+	Icon = "gauge",
+	Min = 40,
+	Max = 300,
+	Default = 120,
+	Step = 10,
+	Callback = function(v)
+		State.normalSpeed = v
+	end,
+})
+
+SpeedSec:AddSlider({
+	Id = "BoostSpeed",
+	Title = "Boost speed (Shift)",
+	Icon = "zap",
+	Min = 80,
+	Max = 500,
+	Default = 240,
+	Step = 10,
+	Callback = function(v)
+		State.boostSpeed = v
+	end,
+})
+
+local CreditsInfo = Credits:AddSection({ Title = "Credits", Icon = "info" })
+local CreditsActions = Credits:AddSection({ Title = "Actions", Icon = "settings-2" })
+
+CreditsInfo:AddParagraph({ Title = "Script Dev", Content = "turkishpainter25", Icon = "user" })
+CreditsInfo:AddParagraph({ Title = "UI Lib", Content = "BobloUI", Icon = "layout-dashboard" })
+CreditsInfo:AddParagraph({ Title = "Lib Dev", Content = "bobloscript.com", Icon = "globe" })
+
+local function unload()
+	State.running = false
+	State.enabled = false
+	resetCamera()
+	for _, c in ipairs(conns) do
+		pcall(function()
+			c:Disconnect()
+		end)
+	end
+	table.clear(conns)
+	pcall(function()
+		UI:Unload()
+	end)
+	genv.__VF_RUNNING = nil
+	genv.__VF_SHUTDOWN = nil
+end
+
+genv.__VF_SHUTDOWN = unload
+
+CreditsActions:AddButton({
+	Title = "Unload script",
+	Text = "Unload",
+	Icon = "power",
+	Variant = "Danger",
+	Callback = function()
+		local dialog = UI.Dialog:Confirm({
+			Title = "Unload?",
+			Content = "Turns off vehicle fly and closes the menu.",
+			Danger = true,
+		})
+		task.spawn(function()
+			if dialog:Await() then
+				unload()
+			end
+		end)
+	end,
+})
+
+notify("Vehicle Fly", "Ready · sit in a vehicle · press V", "Success", 4)
