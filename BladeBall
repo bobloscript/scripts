@@ -1,7 +1,14 @@
 -- Oxyo Hub (Blade Ball) rebuilt on BobloUI
 -- UI layer replaced with BobloUI 0.11.5-beta.1; feature logic preserved.
 
-local BobloUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/bobloscript/BobloUI/refs/tags/v0.11.5-beta.1/dist/BobloUI.min.lua"))()
+local BobloUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/bobloscript/BobloUI/main/dist/BobloUI.min.lua"))
+if type(BobloUI) ~= "function" then
+    return warn("[Oxyo Hub] BobloUI failed to load: executor returned a compile error or no HTTP access")
+end
+BobloUI = BobloUI()
+if type(BobloUI) ~= "table" then
+    return warn("[Oxyo Hub] BobloUI loaded but did not return the library")
+end
 
 -- Stop any previous run of this hub before building a new one.
 if getgenv().OXYO_CONNECTIONS then
@@ -44,15 +51,57 @@ local UI = BobloUI:CreateWindow({
     Id = "OxyoHub",
     Title = "Oxyo Hub",
     Icon = "sword",
-    Theme = "Dark",
     ConfigFolder = "OxyoHub",
     AutoLoad = true,
+    RestoreButton = {
+        Icon = "sword",
+        Size = Vector2.new(38, 38),
+    },
     OnUnload = function()
         if Cleanup then
             Cleanup()
         end
     end,
 })
+
+-- Brand theme: dark green in the spirit of the original hub
+UI:RegisterTheme("Oxyo", {
+    Canvas = Color3.fromHex("#060D08"),
+    Background = Color3.fromHex("#0A140C"),
+    Sidebar = Color3.fromHex("#0C1A0E"),
+    Surface = Color3.fromHex("#102012"),
+    SurfaceRaised = Color3.fromHex("#152817"),
+    SurfaceInset = Color3.fromHex("#081209"),
+    SurfaceSecondary = Color3.fromRGB(18, 33, 20),
+    SurfaceHover = Color3.fromRGB(24, 45, 26),
+    SurfaceActive = Color3.fromRGB(29, 53, 31),
+    Control = Color3.fromRGB(22, 44, 24),
+    ControlHover = Color3.fromRGB(28, 54, 30),
+    ControlPressed = Color3.fromRGB(34, 64, 36),
+    ControlInset = Color3.fromRGB(11, 22, 12),
+    BorderSubtle = Color3.fromRGB(28, 48, 30),
+    Border = Color3.fromRGB(42, 74, 44),
+    BorderStrong = Color3.fromRGB(58, 99, 60),
+    Text = Color3.fromRGB(232, 245, 233),
+    TextSecondary = Color3.fromRGB(156, 201, 160),
+    TextTertiary = Color3.fromRGB(107, 147, 112),
+    TextDisabled = Color3.fromRGB(74, 107, 78),
+    Accent = Color3.fromRGB(79, 191, 88),
+    Success = Color3.fromRGB(76, 201, 76),
+    Warning = Color3.fromRGB(224, 184, 76),
+    Error = Color3.fromRGB(224, 85, 85),
+    Info = Color3.fromRGB(85, 168, 224),
+    Scrim = Color3.fromRGB(0, 0, 0),
+    ScrimTransparency = 0.5,
+})
+
+-- Apply the brand theme unless the player saved their own default theme
+do
+    local savedDefault = UI.GetDefaultTheme and UI:GetDefaultTheme() or nil
+    if not savedDefault or savedDefault == "Dark" or savedDefault == "Light" then
+        UI:SetTheme("Oxyo")
+    end
+end
 
 repeat task.wait() until game:IsLoaded()
 
@@ -69,104 +118,104 @@ local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local Alive = Workspace:FindFirstChild("Alive")
-local Aerodynamic = false
-local AeroTime = tick()
-local AeroDynamicDetected = false
-local AeroDynamicTime = tick()
-local LastInput = UserInputService:GetLastInputType()
-local MouseLoc = nil
-local GrabParry = nil
-local Remotes = {}
-local ParryRemotes = {}
-local OriginalMetas = {}
-local Parries = 0
-local AnimStorage = {}
-local CurrentAnim = nil
-local AnimTrack = nil
+Aerodynamic = false
+AeroTime = tick()
+AeroDynamicDetected = false
+AeroDynamicTime = tick()
+LastInput = UserInputService:GetLastInputType()
+MouseLoc = nil
+GrabParry = nil
+Remotes = {}
+ParryRemotes = {}
+OriginalMetas = {}
+Parries = 0
+AnimStorage = {}
+CurrentAnim = nil
+AnimTrack = nil
 
-local Parried = false
-local LobbyParried = false
-local Previous_Velocity = {}
-local PeakVel = 0
-local Randomized_ParryAccuracy = false
-local Singularity_Detection = false
-local Infinity_Detection = false
-local CooldownProtection = false
-local Death_Slash_Detection = false
-local Speed_Divisor_Multiplier = 1.0
-local DeathSlashDetection = false
-local Infinity_Ball = false
-local ParryCD = LocalPlayer.PlayerGui.Hotbar.Block.UIGradient
-local LobbyParryType = "Keypress"
-local AutoParryType = "Keypress"
-local TriggerbotType = "Keypress"
-local AutoSpamType = "Keypress"
-local SpamMode = "Legit"
-local Curve_Time = tick()
-local Current_Anim_Track = nil
-local Has_Parried_Once = false
-local Previous_Positions = {}
-local Lerp_Radians = 0
-local Last_Warp_Time = tick()
-local AntiPhantomEnabled = false
-local Phantom = false
-local Ball_Distance = 30
-local Speed_Multiplier = 50
-local Turn_Radius = 10
-local Jump_Chance = 50
-local Double_Jump_Chance = 20
-local Can_Jump = false
-local Is_Spamming = false
-local Last_Spam_End_Time = 0
-local Music = nil
-local SelectedSong = "EEYUH!"
-local MusicVolume = 5
-local PredictedPositions = {}
-local MaxPredictions = 5
-local LastJumpTime = 0
-local JumpCooldown = 2
-local Spam_End_Time = 0
-local KorbloxConnection = nil
-local IsAutoSpamming = false
-local Check_Refresh
-local AntiAFKConnection
-local PingHistory = {}
-local MaxPingHistory = 3
-local ClashStartTime = 0
-local ClashEndTime = 0
-local OriginalFaceTexture = nil
-local HeadDecalConnection = nil
-local LastAnimTime = 0
-local SpamCoroutine = nil
-local LastSpamTime = 0
-local SpamDelay = 0.05
-local LastClickTime = 0
-local HighPingCompensation = false
-local Tornado_Time = 0
-local Use_Ability = ReplicatedStorage.Remotes.AbilityButtonPress
-local Parry_Requirements = 0
-local wasBackwards = {}
-local KeypressAutoCurve = false
-local SelectedParryType = "Camera"
-local SelectedTriggerParryType = "Camera"
-local KeypressCurveMethod = "Smooth"
-local currentToTween = nil
-local currentBackTween = nil
-local HighPingProtection = false
-local TriggerHighPingProtection = false
-local TriggerSingularity_Detection = false
-local TriggerInfinity_Detection = false
-local TriggerDeathSlash_Detection = false
-local AutoPostParry = false
-local PostParryTarget = nil
-local PostParryVelocityHistory = {}
-local PostParryScheduled = {}
-local BallSenderTracking = {}
-local selectedTarget = nil
-local cameraLockConn = nil
-local displayToChar = {}
-local Closest_Entity = nil
-local soundOptions = {
+Parried = false
+LobbyParried = false
+Previous_Velocity = {}
+PeakVel = 0
+Randomized_ParryAccuracy = false
+Singularity_Detection = false
+Infinity_Detection = false
+CooldownProtection = false
+Death_Slash_Detection = false
+Speed_Divisor_Multiplier = 1.0
+DeathSlashDetection = false
+Infinity_Ball = false
+ParryCD = LocalPlayer.PlayerGui.Hotbar.Block.UIGradient
+LobbyParryType = "Keypress"
+AutoParryType = "Keypress"
+TriggerbotType = "Keypress"
+AutoSpamType = "Keypress"
+SpamMode = "Legit"
+Curve_Time = tick()
+Current_Anim_Track = nil
+Has_Parried_Once = false
+Previous_Positions = {}
+Lerp_Radians = 0
+Last_Warp_Time = tick()
+AntiPhantomEnabled = false
+Phantom = false
+Ball_Distance = 30
+Speed_Multiplier = 50
+Turn_Radius = 10
+Jump_Chance = 50
+Double_Jump_Chance = 20
+Can_Jump = false
+Is_Spamming = false
+Last_Spam_End_Time = 0
+Music = nil
+SelectedSong = "EEYUH!"
+MusicVolume = 5
+PredictedPositions = {}
+MaxPredictions = 5
+LastJumpTime = 0
+JumpCooldown = 2
+Spam_End_Time = 0
+KorbloxConnection = nil
+IsAutoSpamming = false
+Check_Refresh = nil
+AntiAFKConnection = nil
+PingHistory = {}
+MaxPingHistory = 3
+ClashStartTime = 0
+ClashEndTime = 0
+OriginalFaceTexture = nil
+HeadDecalConnection = nil
+LastAnimTime = 0
+SpamCoroutine = nil
+LastSpamTime = 0
+SpamDelay = 0.05
+LastClickTime = 0
+HighPingCompensation = false
+Tornado_Time = 0
+Use_Ability = ReplicatedStorage.Remotes.AbilityButtonPress
+Parry_Requirements = 0
+wasBackwards = {}
+KeypressAutoCurve = false
+SelectedParryType = "Camera"
+SelectedTriggerParryType = "Camera"
+KeypressCurveMethod = "Smooth"
+currentToTween = nil
+currentBackTween = nil
+HighPingProtection = false
+TriggerHighPingProtection = false
+TriggerSingularity_Detection = false
+TriggerInfinity_Detection = false
+TriggerDeathSlash_Detection = false
+AutoPostParry = false
+PostParryTarget = nil
+PostParryVelocityHistory = {}
+PostParryScheduled = {}
+BallSenderTracking = {}
+selectedTarget = nil
+cameraLockConn = nil
+displayToChar = {}
+Closest_Entity = nil
+soundOptions = {
     ["EEYUH!"] = "rbxassetid://16190782181",
     ["Skibidi Toilet"] = "rbxassetid://122353792844213",
     ["DEKUD"] = "rbxassetid://124760595693133",
@@ -184,14 +233,14 @@ local soundOptions = {
     ["Tears in the Rain"] = "rbxassetid://129710845038263"
 }
 
-local function Update_Ping()
+function Update_Ping()
     local currentPing = game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()
     table.insert(PingHistory, 1, currentPing)
     if #PingHistory > MaxPingHistory then
         table.remove(PingHistory, #PingHistory)
     end
 end
-local function GetAveragePing()
+function GetAveragePing()
     if #PingHistory == 0 then return 0 end
     local sum = 0
     for _, ping in ipairs(PingHistory) do
@@ -199,7 +248,7 @@ local function GetAveragePing()
     end
     return sum / #PingHistory
 end
-local function IsValidRemoteArgs(args)
+function IsValidRemoteArgs(args)
     return #args == 7 and
            type(args[2]) == "string" and
            type(args[3]) == "number" and
@@ -618,7 +667,7 @@ AutoParry.ClosestPlayer = function()
     end
     return closest
 end
-local function GetNumNearby()
+function GetNumNearby()
     local count = 0
     for _, p in pairs(Alive:GetChildren()) do
         if p.Name ~= LocalPlayer.Name and (p.PrimaryPart.Position - LocalPlayer.Character.PrimaryPart.Position).Magnitude < 50 then
@@ -686,10 +735,10 @@ AutoParry.TryParryOrCooldown = function()
     end
     return false
 end
-local function BlockMovement(actionName, inputState, inputObject)
+function BlockMovement(actionName, inputState, inputObject)
     return Enum.ContextActionResult.Sink
 end
-local function SetupAntiPhantom()
+function SetupAntiPhantom()
     if Connections["anti_phantom"] then return end
     Connections["anti_phantom"] = RunService.PreSimulation:Connect(function()
         if Phantom and LocalPlayer.Character:GetAttribute('Parrying') then
@@ -722,7 +771,7 @@ end
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local isMobileDevice = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
-local function SimulateParry()
+function SimulateParry()
     if isMobileDevice then
         mouse1click()
     else
@@ -732,7 +781,7 @@ local function SimulateParry()
     end
 end
 
-local function KeypressAPC(parryType)
+function KeypressAPC(parryType)
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
     local parryData = AutoParry.Parry_Data(parryType)
     if not parryData then return end
@@ -783,16 +832,16 @@ Connections["phantom_event"] = ReplicatedStorage.Remotes.Phantom.OnClientEvent:C
         Phantom = false
     end
 end)
-local LastParry = 0
-local VizEnabled = false
-local function GetCharacter()
+LastParry = 0
+VizEnabled = false
+function GetCharacter()
     return LocalPlayer and LocalPlayer.Character
 end
-local function GetPrimaryPart()
+function GetPrimaryPart()
     local char = GetCharacter()
     return char and char.PrimaryPart
 end
-local function CalcVizRadius()
+function CalcVizRadius()
     local ball = AutoParry.GetBall()
     if ball then
         local vel = ball.Velocity.Magnitude
@@ -801,7 +850,7 @@ local function CalcVizRadius()
     end
     return 15
 end
-local Viz = Instance.new("Part")
+Viz = Instance.new("Part")
 Viz.Name = "OxyoViz"
 Viz.Shape = Enum.PartType.Ball
 Viz.Anchored = true
@@ -810,10 +859,10 @@ Viz.Material = Enum.Material.ForceField
 Viz.Transparency = 0.5
 Viz.Parent = Workspace
 Viz.Size = Vector3.new(0, 0, 0)
-local TargetColor = Color3.new(0,1,0)
-local CurrentColor = Color3.new(0,1,0)
-local LerpSpeed = 0.1
-local function ToggleViz(state)
+TargetColor = Color3.new(0,1,0)
+CurrentColor = Color3.new(0,1,0)
+LerpSpeed = 0.1
+function ToggleViz(state)
     VizEnabled = state
     if not state then Viz.Size = Vector3.new(0, 0, 0) end
 end
@@ -836,12 +885,12 @@ Connections["viz_render"] = RunService.RenderStepped:Connect(function()
         Viz.Size = Vector3.new(0, 0, 0)
     end
 end)
-local Runtime = Workspace.Runtime
-local LastElapsed_Parry_Time = 0
-local Parry_Rate = 5
-local Min_Parry_Delay = 1 / Parry_Rate
-local AutoSpamCoroutine
-local SpectateEnabled = false
+Runtime = Workspace.Runtime
+LastElapsed_Parry_Time = 0
+Parry_Rate = 5
+Min_Parry_Delay = 1 / Parry_Rate
+AutoSpamCoroutine = nil
+SpectateEnabled = false
 task.defer(function()
     Connections["spectate_render"] = RunService.RenderStepped:Connect(function()
         if SpectateEnabled then
@@ -851,8 +900,8 @@ task.defer(function()
         end
     end)
 end)
-local OriginalLighting = {}
-local function Optimize(state)
+OriginalLighting = {}
+function Optimize(state)
     if state then
         local light = game:GetService("Lighting")
         OriginalLighting = {
@@ -899,24 +948,24 @@ end
 -- UI
 -- ============================================================
 
-local parriedBalls = {}
+parriedBalls = {}
 
-local MainTab = UI:AddTab({Id = "main", Title = "Main", Icon = "swords"})
-local MiscTab = UI:AddTab({Id = "misc", Title = "Misc", Icon = "settings-2"})
-local AITab = UI:AddTab({Id = "aiplay", Title = "AI Play", Icon = "bot"})
-local AutoFarmTab = UI:AddTab({Id = "autofarm", Title = "Auto Farm", Icon = "repeat"})
+MainTab = UI:AddTab({Id = "main", Title = "Main", Icon = "swords"})
+MiscTab = UI:AddTab({Id = "misc", Title = "Misc", Icon = "settings-2"})
+AITab = UI:AddTab({Id = "aiplay", Title = "AI Play", Icon = "bot"})
+AutoFarmTab = UI:AddTab({Id = "autofarm", Title = "Auto Farm", Icon = "repeat"})
 
-local parryTypeOptions = Is_Supported_Test and {"Remote", "Keypress"} or {"Keypress"}
-local parryTypeDefault = Is_Supported_Test and "Remote" or "Keypress"
-local curveTypeOptions = {"Backwards", "Camera", "High", "Left", "Random", "Right", "Straight"}
+parryTypeOptions = Is_Supported_Test and {"Remote", "Keypress"} or {"Keypress"}
+parryTypeDefault = Is_Supported_Test and "Remote" or "Keypress"
+curveTypeOptions = {"Backwards", "Camera", "High", "Left", "Random", "Right", "Straight"}
 
 -- ================= Main / Lobby AP =================
-local LobbySection = MainTab:AddSection({
+LobbySection = MainTab:AddSection({
     Title = "Lobby AP",
     Description = "Auto parry for the lobby game",
     Icon = "building-2",
 })
-local LobbyAPToggle = LobbySection:AddToggle({
+LobbyAPToggle = LobbySection:AddToggle({
     Id = "LobbyAP",
     Title = "Lobby AP",
     Description = "Auto parry for the lobby game",
@@ -1022,19 +1071,18 @@ LobbySection:AddDropdown({
     Title = "Parry Type",
     Options = parryTypeOptions,
     Default = parryTypeDefault,
-    EnabledWhen = {LobbyAP = true},
     Callback = function(v)
         LobbyParryType = v
     end,
 })
 
 -- ================= Main / Auto Parry =================
-local AutoParrySection = MainTab:AddSection({
+AutoParrySection = MainTab:AddSection({
     Title = "Auto Parry",
     Description = "Automatically parries for you",
     Icon = "shield",
 })
-local AutoParryToggle = AutoParrySection:AddToggle({
+AutoParryToggle = AutoParrySection:AddToggle({
     Id = "AutoParry",
     Title = "Auto Parry",
     Description = "Automatically parries for you",
@@ -1285,7 +1333,6 @@ AutoParrySection:AddDropdown({
     Title = "Parry Type",
     Options = parryTypeOptions,
     Default = parryTypeDefault,
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         AutoParryType = v
     end,
@@ -1295,7 +1342,6 @@ AutoParrySection:AddDropdown({
     Title = "Curve Type",
     Options = curveTypeOptions,
     Default = "Camera",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         SelectedParryType = v
     end,
@@ -1305,7 +1351,6 @@ AutoParrySection:AddToggle({
     Id = "RandomizedParryAccuracy",
     Title = "Randomized Parry Accuracy",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         Randomized_ParryAccuracy = v
     end,
@@ -1318,7 +1363,6 @@ AutoParrySection:AddSlider({
     Default = 100,
     Step = 1,
     Suffix = "%",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         Speed_Divisor_Multiplier = 0.7 + ((v - 1) / 99) * 0.35
     end,
@@ -1327,7 +1371,6 @@ AutoParrySection:AddToggle({
     Id = "HighPingCompensation",
     Title = "High Ping Compensation",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         HighPingCompensation = v
     end,
@@ -1336,7 +1379,6 @@ AutoParrySection:AddToggle({
     Id = "AutoPostParry",
     Title = "Auto Pre-Click",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         AutoPostParry = v
         if v then
@@ -1384,7 +1426,6 @@ AutoParrySection:AddToggle({
     Id = "SingularityDetection",
     Title = "Singularity Detection",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         Singularity_Detection = v
     end,
@@ -1393,7 +1434,6 @@ AutoParrySection:AddToggle({
     Id = "InfinityDetection",
     Title = "Infinity Detection",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         Infinity_Detection = v
     end,
@@ -1402,7 +1442,6 @@ AutoParrySection:AddToggle({
     Id = "CooldownProtection",
     Title = "Cooldown Protection",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         CooldownProtection = v
     end,
@@ -1411,7 +1450,6 @@ AutoParrySection:AddToggle({
     Id = "HighPingProtection",
     Title = "High Ping Protection",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         HighPingProtection = v
     end,
@@ -1420,7 +1458,6 @@ AutoParrySection:AddToggle({
     Id = "DeathSlashDetection",
     Title = "Death Slash Detection",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         Death_Slash_Detection = v
     end,
@@ -1429,7 +1466,6 @@ AutoParrySection:AddToggle({
     Id = "AntiPhantom",
     Title = "Anti Phantom",
     Style = "Checkbox",
-    EnabledWhen = {AutoParry = true},
     Callback = function(v)
         AntiPhantomEnabled = v
         if v then
@@ -1444,14 +1480,14 @@ AutoParrySection:AddToggle({
 })
 
 -- ================= Main / Triggerbot =================
-local TriggerbotSection = MainTab:AddSection({
+TriggerbotSection = MainTab:AddSection({
     Title = "Triggerbot",
     Description = "Parries instantly when targeted",
     Icon = "zap",
 })
-local isTriggerbotEnabled = false
-local triggerParriedBalls = {}
-local TriggerbotToggle = TriggerbotSection:AddToggle({
+isTriggerbotEnabled = false
+triggerParriedBalls = {}
+TriggerbotToggle = TriggerbotSection:AddToggle({
     Id = "Triggerbot",
     Title = "Triggerbot",
     Description = "Parries instantly when targeted",
@@ -1659,7 +1695,6 @@ TriggerbotSection:AddDropdown({
     Title = "Parry Type",
     Options = parryTypeOptions,
     Default = parryTypeDefault,
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         TriggerbotType = v
     end,
@@ -1669,7 +1704,6 @@ TriggerbotSection:AddDropdown({
     Title = "Curve Type",
     Options = curveTypeOptions,
     Default = "Camera",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         SelectedTriggerParryType = v
     end,
@@ -1679,7 +1713,6 @@ TriggerbotSection:AddToggle({
     Id = "TriggerHighPingProtection",
     Title = "High Ping Protection",
     Style = "Checkbox",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         TriggerHighPingProtection = v
     end,
@@ -1688,7 +1721,6 @@ TriggerbotSection:AddToggle({
     Id = "TriggerAutoPostParry",
     Title = "Auto Pre-Click",
     Style = "Checkbox",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         if v then
             if isTriggerbotEnabled then
@@ -1766,7 +1798,6 @@ TriggerbotSection:AddToggle({
     Id = "TriggerSingularityDetection",
     Title = "Singularity Detection",
     Style = "Checkbox",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         TriggerSingularity_Detection = v
     end,
@@ -1775,7 +1806,6 @@ TriggerbotSection:AddToggle({
     Id = "TriggerInfinityDetection",
     Title = "Infinity Detection",
     Style = "Checkbox",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         TriggerInfinity_Detection = v
     end,
@@ -1784,15 +1814,14 @@ TriggerbotSection:AddToggle({
     Id = "TriggerDeathSlashDetection",
     Title = "Death Slash Detection",
     Style = "Checkbox",
-    EnabledWhen = {Triggerbot = true},
     Callback = function(v)
         TriggerDeathSlash_Detection = v
     end,
 })
 
 -- ================= Misc =================
-local VisualizerSection = MiscTab:AddSection({Title = "Visualizer", Description = "Visualizes the parry range", Icon = "circle-dot"})
-local VisualizerToggle = VisualizerSection:AddToggle({
+VisualizerSection = MiscTab:AddSection({Title = "Visualizer", Description = "Visualizes the parry range", Icon = "circle-dot"})
+VisualizerToggle = VisualizerSection:AddToggle({
     Id = "Visualizer",
     Title = "Visualizer",
     Description = "Visualizes the parry range",
@@ -1803,7 +1832,7 @@ local VisualizerToggle = VisualizerSection:AddToggle({
 })
 VisualizerToggle:AddKeybind({Id = "VisualizerKey", Title = "Visualizer keybind", Mode = "Toggle", Mobile = true, MobileText = "Visualizer"})
 
-local AntiLagSection = MiscTab:AddSection({Title = "Anti-Lag", Description = "Reduces lag by optimizing graphics", Icon = "gauge"})
+AntiLagSection = MiscTab:AddSection({Title = "Anti-Lag", Description = "Reduces lag by optimizing graphics", Icon = "gauge"})
 AntiLagSection:AddToggle({
     Id = "LagReducer",
     Title = "Anti-Lag",
@@ -1814,7 +1843,7 @@ AntiLagSection:AddToggle({
     end,
 })
 
-local NoRenderSection = MiscTab:AddSection({Title = "No Render", Description = "Disables rendering of certain effects", Icon = "image-off"})
+NoRenderSection = MiscTab:AddSection({Title = "No Render", Description = "Disables rendering of certain effects", Icon = "image-off"})
 NoRenderSection:AddToggle({
     Id = "NoRender",
     Title = "No Render",
@@ -1835,9 +1864,9 @@ NoRenderSection:AddToggle({
     end,
 })
 
-local AbilityESPSection = MiscTab:AddSection({Title = "Ability ESP", Description = "Shows opponents abilities", Icon = "eye"})
-local Billboard_Labels = {}
-local ConnectionsTable = {}
+AbilityESPSection = MiscTab:AddSection({Title = "Ability ESP", Description = "Shows opponents abilities", Icon = "eye"})
+Billboard_Labels = {}
+ConnectionsTable = {}
 AbilityESPSection:AddToggle({
     Id = "AbilityESP",
     Title = "Ability ESP",
@@ -1914,7 +1943,7 @@ AbilityESPSection:AddToggle({
     end,
 })
 
-local SkySection = MiscTab:AddSection({Title = "Sky Settings", Description = "Lets you change the sky to your liking", Icon = "cloud"})
+SkySection = MiscTab:AddSection({Title = "Sky Settings", Description = "Lets you change the sky to your liking", Icon = "cloud"})
 SkySection:AddDropdown({
     Id = "SkyBoxOptions",
     Title = "Sky Box Options",
@@ -1938,7 +1967,7 @@ SkySection:AddDropdown({
     end,
 })
 
-local LightingSection = MiscTab:AddSection({Title = "Lighting Settings", Description = "Tweak the lighting to your liking", Icon = "sun"})
+LightingSection = MiscTab:AddSection({Title = "Lighting Settings", Description = "Tweak the lighting to your liking", Icon = "sun"})
 LightingSection:AddToggle({
     Id = "FullBright",
     Title = "Full Bright",
@@ -1982,7 +2011,7 @@ LightingSection:AddSlider({
     end,
 })
 
-local function ClearHead(char)
+function ClearHead(char)
     local head = char:WaitForChild("Head")
     head.Transparency = 1
     for _, child in pairs(head:GetChildren()) do
@@ -1991,7 +2020,7 @@ local function ClearHead(char)
         end
     end
 end
-local function ClearHeadless(char)
+function ClearHeadless(char)
     local head = char:FindFirstChild("Head")
     if head then
         head.Transparency = 0
@@ -2003,7 +2032,7 @@ local function ClearHeadless(char)
         end
     end
 end
-local function Korbloxify(char)
+function Korbloxify(char)
     if char:FindFirstChild("KorbloxLeg") then return end
     local rightLeg = char:WaitForChild("Right Leg")
     rightLeg.Transparency = 1
@@ -2032,7 +2061,7 @@ local function Korbloxify(char)
         end
     end)
 end
-local function ClearKorblox(char)
+function ClearKorblox(char)
     if KorbloxConnection then
         KorbloxConnection:Disconnect()
         KorbloxConnection = nil
@@ -2047,7 +2076,7 @@ local function ClearKorblox(char)
         rightLeg.CanCollide = true
     end
 end
-local function EnsureModifications()
+function EnsureModifications()
     local char = LocalPlayer.Character
     if not char then return end
     local head = char:FindFirstChild("Head")
@@ -2069,7 +2098,7 @@ local function EnsureModifications()
     end
 end
 
-local KorbloxSection = MiscTab:AddSection({Title = "Korblox & Headless", Description = "Enable Korblox & Headless", Icon = "bone"})
+KorbloxSection = MiscTab:AddSection({Title = "Korblox & Headless", Description = "Enable Korblox & Headless", Icon = "bone"})
 KorbloxSection:AddToggle({
     Id = "KorbloxHeadless",
     Title = "Korblox & Headless",
@@ -2113,11 +2142,11 @@ KorbloxSection:AddToggle({
     end,
 })
 
-local songList = {}
+songList = {}
 for name in pairs(soundOptions) do
     table.insert(songList, name)
 end
-local MusicSection = MiscTab:AddSection({Title = "Music Player", Description = "Play music in game", Icon = "music"})
+MusicSection = MiscTab:AddSection({Title = "Music Player", Description = "Play music in game", Icon = "music"})
 MusicSection:AddToggle({
     Id = "EnableMusic",
     Title = "Enable Music",
@@ -2170,13 +2199,13 @@ MusicSection:AddDropdown({
 })
 
 -- ================= Misc / Ball Info overlays =================
-local mainLocalPlayer = Players.LocalPlayer
-local speedGui = Instance.new("ScreenGui")
+mainLocalPlayer = Players.LocalPlayer
+speedGui = Instance.new("ScreenGui")
 speedGui.Name = "OxyoBallStats"
 speedGui.Parent = mainLocalPlayer.PlayerGui
 speedGui.ResetOnSpawn = false
 
-local speedLabel = Instance.new("TextLabel")
+speedLabel = Instance.new("TextLabel")
 speedLabel.Name = "Speed"
 speedLabel.Size = UDim2.new(0, 200, 0, 50)
 speedLabel.Position = UDim2.new(1, -210, 0, 10)
@@ -2190,12 +2219,12 @@ speedLabel.TextYAlignment = Enum.TextYAlignment.Top
 speedLabel.Text = ""
 speedLabel.Parent = speedGui
 
-local lobbySpeedGui = Instance.new("ScreenGui")
+lobbySpeedGui = Instance.new("ScreenGui")
 lobbySpeedGui.Name = "OxyoLobbyStats"
 lobbySpeedGui.Parent = mainLocalPlayer.PlayerGui
 lobbySpeedGui.ResetOnSpawn = false
 
-local lobbySpeedLabel = Instance.new("TextLabel")
+lobbySpeedLabel = Instance.new("TextLabel")
 lobbySpeedLabel.Name = "LobbySpeed"
 lobbySpeedLabel.Size = UDim2.new(0, 200, 0, 50)
 lobbySpeedLabel.Position = UDim2.new(1, -210, 0, 60)
@@ -2209,12 +2238,12 @@ lobbySpeedLabel.TextYAlignment = Enum.TextYAlignment.Top
 lobbySpeedLabel.Text = ""
 lobbySpeedLabel.Parent = lobbySpeedGui
 
-local curveGui = Instance.new("ScreenGui")
+curveGui = Instance.new("ScreenGui")
 curveGui.Name = "OxyoCurveStats"
 curveGui.Parent = mainLocalPlayer.PlayerGui
 curveGui.ResetOnSpawn = false
 
-local curveLabel = Instance.new("TextLabel")
+curveLabel = Instance.new("TextLabel")
 curveLabel.Name = "Curve"
 curveLabel.Size = UDim2.new(0, 200, 0, 50)
 curveLabel.Position = UDim2.new(1, -210, 0, 70)
@@ -2228,7 +2257,7 @@ curveLabel.TextYAlignment = Enum.TextYAlignment.Top
 curveLabel.Text = ""
 curveLabel.Parent = curveGui
 
-local function GetLobbyBall()
+function GetLobbyBall()
     for _, instance in pairs(Workspace.TrainingBalls:GetChildren()) do
         if instance:IsA("BasePart") and instance:GetAttribute("realBall") then
             instance.CanCollide = false
@@ -2238,7 +2267,7 @@ local function GetLobbyBall()
     return nil
 end
 
-local BallInfoSection = MiscTab:AddSection({Title = "Ball Info", Description = "Shows info about the ball like speed", Icon = "activity"})
+BallInfoSection = MiscTab:AddSection({Title = "Ball Info", Description = "Shows info about the ball like speed", Icon = "activity"})
 BallInfoSection:AddToggle({
     Id = "BallSpeedStats",
     Title = "Ball Speed Stats",
@@ -2391,7 +2420,7 @@ Connections["overlay_charadded"] = mainLocalPlayer.CharacterAdded:Connect(functi
 end)
 
 -- ================= Misc / Gravity & FOV =================
-local GravitySection = MiscTab:AddSection({Title = "Gravity", Description = "Little Fun Gravity Slider", Icon = "arrow-down"})
+GravitySection = MiscTab:AddSection({Title = "Gravity", Description = "Little Fun Gravity Slider", Icon = "arrow-down"})
 GravitySection:AddSlider({
     Id = "CustomGravity",
     Title = "Custom Gravity",
@@ -2404,7 +2433,7 @@ GravitySection:AddSlider({
     end,
 })
 
-local FOVSection = MiscTab:AddSection({Title = "Field Of View", Description = "Change camera FOV", Icon = "camera"})
+FOVSection = MiscTab:AddSection({Title = "Field Of View", Description = "Change camera FOV", Icon = "camera"})
 FOVSection:AddSlider({
     Id = "FieldOfViewValue",
     Title = "FOV Value",
@@ -2428,22 +2457,22 @@ Connections["fov_charadded"] = LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ================= AI Play =================
-local AIPlaying = false
-local AICoroutine = nil
-local AILastPos = Vector3.new(0, 0, 0)
-local AIStuckTimer = 0
-local AIPathTime = 0
-local AICurvePoint = nil
-local AILastUpdate = 0
-local AILastDoubleJumpTime = 0
-local AIJumpAnimation = nil
-local AIFeintTimer = 0
-local AIFeintActive = false
-local AIFeintCooldown = 0
-local AIDidJump = false
-local AILastJumpTime = 0
+AIPlaying = false
+AICoroutine = nil
+AILastPos = Vector3.new(0, 0, 0)
+AIStuckTimer = 0
+AIPathTime = 0
+AICurvePoint = nil
+AILastUpdate = 0
+AILastDoubleJumpTime = 0
+AIJumpAnimation = nil
+AIFeintTimer = 0
+AIFeintActive = false
+AIFeintCooldown = 0
+AIDidJump = false
+AILastJumpTime = 0
 
-local function IsStuck(currentPos)
+function IsStuck(currentPos)
     if (currentPos - AILastPos).Magnitude < 1 then
         AIStuckTimer = AIStuckTimer + 1
     else
@@ -2453,24 +2482,24 @@ local function IsStuck(currentPos)
     return AIStuckTimer > 5
 end
 
-local function MoveToPos(character, targetPos)
+function MoveToPos(character, targetPos)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local primaryPart = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
     if not humanoid or not primaryPart then return end
     humanoid:MoveTo(targetPos)
 end
 
-local function SmoothLerp(start, finish, alpha)
+function SmoothLerp(start, finish, alpha)
     return start + (finish - start) * alpha
 end
 
-local function BezierCurve(start, middle, finish, alpha)
+function BezierCurve(start, middle, finish, alpha)
     local point1 = SmoothLerp(start, middle, alpha)
     local point2 = SmoothLerp(middle, finish, alpha)
     return SmoothLerp(point1, point2, alpha)
 end
 
-local function CalculateCurvePoint(start, finish)
+function CalculateCurvePoint(start, finish)
     local midpoint = (start + finish) * 0.5
     local delta = start - finish
 
@@ -2498,7 +2527,7 @@ local function CalculateCurvePoint(start, finish)
     end
 end
 
-local function GetCurvedPath(start, finish, deltaTime)
+function GetCurvedPath(start, finish, deltaTime)
     AIPathTime = AIPathTime + deltaTime
     local progress = math.clamp(AIPathTime / 0.9, 0, 1)
 
@@ -2518,7 +2547,7 @@ local function GetCurvedPath(start, finish, deltaTime)
     return BezierCurve(start, AICurvePoint, finish, progress)
 end
 
-local function CheckPercentage(threshold)
+function CheckPercentage(threshold)
     local elapsed = tick() - AILastUpdate
     if elapsed < 0.3 then
         return false
@@ -2530,7 +2559,7 @@ local function CheckPercentage(threshold)
     return threshold >= roll
 end
 
-local function FindMapFloor()
+function FindMapFloor()
     local floor = Workspace:FindFirstChild("FLOOR")
 
     if not floor then
@@ -2547,7 +2576,7 @@ local function FindMapFloor()
     return floor
 end
 
-local function LoadJumpAnimation(character)
+function LoadJumpAnimation(character)
     if AIJumpAnimation then
         AIJumpAnimation:Destroy()
         AIJumpAnimation = nil
@@ -2560,14 +2589,14 @@ local function LoadJumpAnimation(character)
     AIJumpAnimation = humanoid.Animator:LoadAnimation(animAsset)
 end
 
-local function GetPing()
+function GetPing()
     local success, ping = pcall(function()
         return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()
     end)
     return success and ping or 50
 end
 
-local function GetClosestPlayerDistance(rootPart)
+function GetClosestPlayerDistance(rootPart)
     local closestDist = math.huge
     for _, player in pairs(game.Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character.PrimaryPart then
@@ -2580,12 +2609,12 @@ local function GetClosestPlayerDistance(rootPart)
     return closestDist
 end
 
-local function IsInDangerZone(rootPart)
+function IsInDangerZone(rootPart)
     local minDistance = GetClosestPlayerDistance(rootPart)
     return minDistance < 15
 end
 
-local function CalculateTargetPosition(ball, rootPart)
+function CalculateTargetPosition(ball, rootPart)
     local floor = FindMapFloor()
     if not floor or not ball then
         return nil
@@ -2656,7 +2685,7 @@ local function CalculateTargetPosition(ball, rootPart)
     return Vector3.new(finalX, floor.Position.Y + 5, finalZ)
 end
 
-local function ExecuteDoubleJump(character)
+function ExecuteDoubleJump(character)
     local currentTime = tick()
 
     if currentTime - AILastJumpTime > 2 then
@@ -2712,7 +2741,7 @@ local function ExecuteDoubleJump(character)
     end)
 end
 
-local function PerformJump(character)
+function PerformJump(character)
     if not Can_Jump then
         return
     end
@@ -2734,7 +2763,7 @@ local function PerformJump(character)
     end
 end
 
-local function UpdateFeintBehavior()
+function UpdateFeintBehavior()
     local currentTime = tick()
 
     if AIFeintCooldown > currentTime then
@@ -2754,7 +2783,7 @@ local function UpdateFeintBehavior()
     end
 end
 
-local AIMethods = {
+AIMethods = {
     BallChaser = function(character)
         if IsAutoSpamming or (ClashEndTime > 0 and tick() - ClashEndTime < 2.5) then
             return
@@ -2799,7 +2828,7 @@ local AIMethods = {
     end
 }
 
-local function RunAI()
+function RunAI()
     while AIPlaying do
         local char = LocalPlayer.Character
         if char then
@@ -2819,8 +2848,8 @@ Connections["ai_charadded"] = LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
-local AISection = AITab:AddSection({Title = "AI Play", Description = "Good for legit, auto plays for you", Icon = "bot"})
-local AIPlayToggle = AISection:AddToggle({
+AISection = AITab:AddSection({Title = "AI Play", Description = "Good for legit, auto plays for you", Icon = "bot"})
+AIPlayToggle = AISection:AddToggle({
     Id = "AIPlay",
     Title = "AI Play",
     Description = "Good for legit, auto plays for you",
@@ -2843,14 +2872,12 @@ AISection:AddToggle({
     Id = "StopWhenClash",
     Title = "Stop When Clash Incoming",
     Style = "Checkbox",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v) end,
 })
 AISection:AddToggle({
     Id = "AutoVote",
     Title = "Auto Vote",
     Style = "Checkbox",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         if v then
             task.spawn(function()
@@ -2864,7 +2891,7 @@ AISection:AddToggle({
     end,
 })
 
-local function Enable_ANTIAFK()
+function Enable_ANTIAFK()
     local GC = getconnections or get_signal_cons
     if GC then
         for i,v in pairs(GC(Players.LocalPlayer.Idled)) do
@@ -2883,7 +2910,7 @@ local function Enable_ANTIAFK()
     end
 end
 
-local function Disable_ANTIAFK()
+function Disable_ANTIAFK()
     if AntiAFKConnection then
         AntiAFKConnection:Disconnect()
         AntiAFKConnection = nil
@@ -2894,7 +2921,6 @@ AISection:AddToggle({
     Id = "AntiAFK",
     Title = "Anti AFK",
     Style = "Checkbox",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         if v then
             Enable_ANTIAFK()
@@ -2907,7 +2933,6 @@ AISection:AddToggle({
     Id = "EnableJumping",
     Title = "Enable Jumping",
     Style = "Checkbox",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Can_Jump = v
     end,
@@ -2921,7 +2946,6 @@ AISection:AddSlider({
     Default = 30,
     Step = 1,
     Suffix = " studs",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Ball_Distance = v
     end,
@@ -2933,7 +2957,6 @@ AISection:AddSlider({
     Max = 100,
     Default = 50,
     Step = 1,
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Speed_Multiplier = v
     end,
@@ -2945,7 +2968,6 @@ AISection:AddSlider({
     Max = 50,
     Default = 10,
     Step = 1,
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Turn_Radius = v
     end,
@@ -2958,7 +2980,6 @@ AISection:AddSlider({
     Default = 50,
     Step = 1,
     Suffix = "%",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Jump_Chance = v
     end,
@@ -2971,14 +2992,13 @@ AISection:AddSlider({
     Default = 20,
     Step = 1,
     Suffix = "%",
-    EnabledWhen = {AIPlay = true},
     Callback = function(v)
         Double_Jump_Chance = v
     end,
 })
 
 -- ================= Auto Farm =================
-local AutoFarmSection = AutoFarmTab:AddSection({Title = "Auto Ranked Queue", Description = "Automatically queues ranked for you", Icon = "trophy"})
+AutoFarmSection = AutoFarmTab:AddSection({Title = "Auto Ranked Queue", Description = "Automatically queues ranked for you", Icon = "trophy"})
 AutoFarmSection:AddToggle({
     Id = "AutoRankedQueue",
     Title = "Auto Ranked Queue",
