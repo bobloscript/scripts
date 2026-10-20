@@ -1,5 +1,5 @@
 -- Kingfisher / Tribes 3v3 -- standalone client/executor script
--- Lennon hub — BobloNEXT interface; original ballistic and bow logic retained.
+-- Robscript team - Tribes — BobloNEXT interface; original ballistic and bow logic retained.
 -- BobloNEXT controls, game-specific configs, native window sizing and unload.
 -- Enable Aim in Main; aiming follows during a bow draw. Insert toggles the menu.
 -- Optional native bow automation and scoped silent direction; both start OFF.
@@ -45,10 +45,10 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
-assert(player and RunService:IsClient(), "[Lennon hub] Run this in the game client.")
+assert(player and RunService:IsClient(), "[Robscript team - Tribes] Run this in the game client.")
 
 local playerGui = player:WaitForChild("PlayerGui", 15)
-assert(playerGui, "[Lennon hub] PlayerGui did not load.")
+assert(playerGui, "[Robscript team - Tribes] PlayerGui did not load.")
 local ROOT_NAME = "__KingfisherTribes_v1"
 local old = playerGui:FindFirstChild(ROOT_NAME)
 if old then
@@ -99,7 +99,7 @@ local function unload()
     if UI.MouseIconBeforeMenu ~= nil then UIS.MouseIconEnabled = UI.MouseIconBeforeMenu end
     visuals:Destroy()
     gui:Destroy()
-    print("[Lennon hub] Unloaded.")
+    print("[Robscript team - Tribes] Unloaded.")
 end
 connect(shutdown.Event, unload)
 connect(gui.Destroying, unload)
@@ -122,10 +122,10 @@ do
         assert(chunk, err)
         return chunk()
     end)
-    if not ok then unload(); error("[Lennon hub] BobloNEXT could not load: " .. tostring(result)) end
+    if not ok then unload(); error("[Robscript team - Tribes] BobloNEXT could not load: " .. tostring(result)) end
     UI.Library = result
     UI.Window = UI.Library:CreateWindow({
-        Title = "Lennon hub",
+        Title = "Robscript team - Tribes",
         Subtitle = "Kingfisher / Tribes 3v3",
         Icon = "Lucide:crosshair",
         Size = UDim2.fromOffset(620, 440),
@@ -143,7 +143,7 @@ do
     UI.Building, UI.Updating, UI.Paused = true, false, false
 
     function UI.Notify(text, kind)
-        UI.Library:Notify({ Title = "Lennon hub", Text = tostring(text), Type = kind or "info", Duration = 4 })
+        UI.Library:Notify({ Title = "Robscript team - Tribes", Text = tostring(text), Type = kind or "info", Duration = 4 })
     end
 
     function UI.SyncOne(key)
@@ -325,7 +325,7 @@ do
             for key in pairs(UI.Controls) do UI.SyncOne(key) end
         end })
     end })
-    configs:AddButton({ Text = "Unload Lennon hub", Callback = unload })
+    configs:AddButton({ Text = "Unload Robscript team - Tribes", Callback = unload })
     UI.Building = false
 end
 
@@ -355,7 +355,7 @@ local function releaseMenuMouse()
     local previous = menuCamera
     menuCamera = nil
     local ok, err = pcall(previous.PopMouseUnlock, binding)
-    if not ok then warn("[Lennon hub] Mouse unlock cleanup failed: " .. tostring(err)) end
+    if not ok then warn("[Robscript team - Tribes] Mouse unlock cleanup failed: " .. tostring(err)) end
 end
 local function syncMenuMouse()
     local desired = active and isMenuOpen() and modules.Camera or nil
@@ -367,7 +367,7 @@ local function syncMenuMouse()
     if desired then
         local ok, err = pcall(desired.PushMouseUnlock, binding)
         if ok then menuCamera = desired
-        else warn("[Lennon hub] Native menu mouse control unavailable: " .. tostring(err)) end
+        else warn("[Robscript team - Tribes] Native menu mouse control unavailable: " .. tostring(err)) end
     end
 end
 table.insert(destructors, releaseMenuMouse)
@@ -404,7 +404,7 @@ local function setMenuVisible(visible)
 end
 RunService:BindToRenderStep(menuBinding, Enum.RenderPriority.Camera.Value + 4, syncMenuState)
 setMenuVisible(true)
-print("[Lennon hub] Menu ready. Insert hides/shows it.")
+print("[Robscript team - Tribes] Menu ready. Insert hides/shows it.")
 
 
 local function loadModule(path, key)
@@ -418,7 +418,7 @@ local function loadModule(path, key)
         local ok, value = pcall(require, cursor)
         if not active then return end
         if not ok or type(value) ~= "table" then
-            warn("[Lennon hub] " .. key .. " unavailable; using fallback.")
+            warn("[Robscript team - Tribes] " .. key .. " unavailable; using fallback.")
             return
         end
         modules[key] = value
@@ -440,7 +440,7 @@ local function loadModule(path, key)
                         ok, err = pcall(applyAim, math.clamp(data.charge, 0, 1), true)
                     end
                     drawing, selected = false, nil
-                    if not ok then warn("[Lennon hub] Release adjustment failed: " .. tostring(err)) end
+                    if not ok then warn("[Robscript team - Tribes] Release adjustment failed: " .. tostring(err)) end
                 end
             end)
             if subscribed and type(disconnect) == "function" then
@@ -1072,7 +1072,7 @@ stopAuto = function(reason)
             local ok, err = pcall(owned.CancelDraw, owned)
             if not ok or owned.drawing then
                 owned.drawing = false -- Never turn a failed cancellation into a release shot.
-                if not ok then warn("[Lennon hub] Native draw cancellation failed: " .. tostring(err)) end
+                if not ok then warn("[Robscript team - Tribes] Native draw cancellation failed: " .. tostring(err)) end
             end
         end
         owned.m1Down = false
@@ -1186,7 +1186,7 @@ installBowAdapters = function()
     if not ok then
         pcall(restore)
         autoNote = "Native bow adapter unavailable"
-        warn("[Lennon hub] Bow adapter could not be installed: " .. tostring(err))
+        warn("[Robscript team - Tribes] Bow adapter could not be installed: " .. tostring(err))
         return
     end
     bowHookCleanup = restore
@@ -1281,7 +1281,7 @@ local function updateAutoBow(now, tool, tuning, weaponId)
     if readyToRelease(charge, choice, tuning, weaponId) then
         autoReleaseResult = nil
         local ok, err = pcall(modules.Controller.Dispatch, "Primary", false)
-        if not ok then stopAuto("Release failed"); warn("[Lennon hub] Auto release: " .. tostring(err)); return end
+        if not ok then stopAuto("Release failed"); warn("[Robscript team - Tribes] Auto release: " .. tostring(err)); return end
         if autoReleaseResult == false then autoNext = now + 0.2; return end
         if handler.drawing then stopAuto("Release was not accepted"); return else autoOwned = nil end
         autoNote = "Auto: released; waiting for cooldown"
@@ -1348,7 +1348,7 @@ connect(UIS.InputEnded, function(input)
         if not nativeDraw and heldFallback then ok, err = pcall(applyAim, nil, true) end
         heldFallback = false
         if not nativeDraw then selected = nil end
-        if not ok then warn("[Lennon hub] Estimated release adjustment failed: " .. tostring(err)) end
+        if not ok then warn("[Robscript team - Tribes] Estimated release adjustment failed: " .. tostring(err)) end
     end
 end)
 connect(UIS.WindowFocusReleased, function()
@@ -1383,7 +1383,7 @@ mathTests = function()
     test("lifetime", Vector3.new(100, 0, 0), zero, 50, Vector3.new(0, -10, 0), 5, {2.0430964})
     test("coincident", zero, zero, 50, zero, 5, {})
     test("zero speed", Vector3.new(100, 0, 0), zero, 0, zero, 5, {})
-    print("[Lennon hub] 8 ballistic tests passed.")
+    print("[Robscript team - Tribes] 8 ballistic tests passed.")
     return true
 end
 
@@ -1478,8 +1478,8 @@ RunService:BindToRenderStep(binding, Enum.RenderPriority.Camera.Value + 3, funct
         UI.Status("Error", "Features stopped; rerun script. " .. tostring(err):sub(1, 160))
         UI.Notify("Features stopped: " .. tostring(err):sub(1, 160), "error")
         setMenuVisible(true)
-        warn("[Lennon hub] Features stopped after runtime error (menu stays available): " .. tostring(err))
+        warn("[Robscript team - Tribes] Features stopped after runtime error (menu stays available): " .. tostring(err))
     end
 end)
-print("[Lennon hub] Loaded. Insert: menu. AIM and AUTO BOW start OFF. Use Silent Aim or camera aim; hide the menu for Auto Bow. Use Unload in Main or Settings to stop the script.")
+print("[Robscript team - Tribes] Loaded. Insert: menu. AIM and AUTO BOW start OFF. Use Silent Aim or camera aim; hide the menu for Auto Bow. Use Unload in Main or Settings to stop the script.")
 return {Settings = Config, Unload = unload, RunMathTests = mathTests}
