@@ -1,0 +1,1485 @@
+-- Kingfisher / Tribes 3v3 -- standalone client/executor script
+-- Lennon hub — BobloNEXT interface; original ballistic and bow logic retained.
+-- BobloNEXT controls, game-specific configs, native window sizing and unload.
+-- Enable Aim in Main; aiming follows during a bow draw. Insert toggles the menu.
+-- Optional native bow automation and scoped silent direction; both start OFF.
+-- Jump prediction models gravity and an estimated landing. Native events give charge.
+-- Run in the live game client; a saveinstance lacks the server needed for a full match.
+
+local Config = {
+    ESP = true,
+    Aim = false,
+    SilentAim = false,
+    AutoBow = false,
+    SmartCharge = true,
+    JumpPrediction = true,
+    AutoMinCharge = 0.35,
+    AutoMaxFlight = 0.75,
+    AutoInterval = 0.05,
+    AutoLostTargetGrace = 0.4,
+    AutoMaxHold = 3,
+    Trajectory = true,
+    Names = true,
+    FOVRadius = 180,
+    MaxDistance = 650,
+    IncludeTrainingDummies = true,
+    PreferHighArc = false,
+    TargetPart = "UpperTorso",
+    TargetRefresh = 0.25,
+    SelectInterval = 0.05,
+    TrajectoryInterval = 1 / 30,
+    IdleTrajectoryInterval = 1 / 10,
+    CastStep = 1 / 45,
+    MaxLifetime = 5,
+    MaxTravel = 1200,
+    MaxCandidates = 3,
+    ExtraLeadSeconds = 0,
+    RunMathTests = false,
+}
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
+assert(player and RunService:IsClient(), "[Lennon hub] Run this in the game client.")
+
+local playerGui = player:WaitForChild("PlayerGui", 15)
+assert(playerGui, "[Lennon hub] PlayerGui did not load.")
+local ROOT_NAME = "__KingfisherTribes_v1"
+local old = playerGui:FindFirstChild(ROOT_NAME)
+if old then
+    local stop = old:FindFirstChild("Shutdown")
+    if stop and stop:IsA("BindableEvent") then stop:Fire(); task.wait() end
+    if old.Parent then old:Destroy() end
+end
+
+local connections, destructors = {}, {}
+local active = true
+local renderFailed = false
+local binding = ROOT_NAME .. "_" .. tostring(math.floor(os.clock() * 1000000))
+local menuBinding = binding .. "_Menu"
+local stopAuto, installBowAdapters, mathTests
+local UI = {}
+local bowAdaptersReady = false
+local autoNote = "Auto: OFF"
+local windowFocused = true
+local function connect(signal, fn)
+    local connection = signal:Connect(fn)
+    table.insert(connections, connection)
+    return connection
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = ROOT_NAME
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Enabled = true
+gui.DisplayOrder = 1000
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+local shutdown = Instance.new("BindableEvent")
+shutdown.Name = "Shutdown"
+shutdown.Parent = gui
+local visuals = Instance.new("Folder")
+visuals.Name = ROOT_NAME
+visuals.Parent = Workspace
+
+local function unload()
+    if not active then return end
+    active = false
+    RunService:UnbindFromRenderStep(binding)
+    RunService:UnbindFromRenderStep(menuBinding)
+    for _, connection in ipairs(connections) do connection:Disconnect() end
+    for _, destructor in ipairs(destructors) do pcall(destructor) end
+    if UI.Window then pcall(UI.Window.Destroy, UI.Window) end
+    if UI.MouseIconBeforeMenu ~= nil then UIS.MouseIconEnabled = UI.MouseIconBeforeMenu end
+    visuals:Destroy()
+    gui:Destroy()
+    print("[Lennon hub] Unloaded.")
+end
+connect(shutdown.Event, unload)
+connect(gui.Destroying, unload)
+
+local function make(class, properties, parent)
+    local object = Instance.new(class)
+    for key, value in pairs(properties) do object[key] = value end
+    object.Parent = parent
+    return object
+end
+local function rounded(object, radius)
+    make("UICorner", {CornerRadius = UDim.new(0, radius)}, object)
+end
+-- BobloNEXT controls. Only APIs documented in LLM-USAGE-PROMPT.md are used.
+do
+    UI.MouseIconBeforeMenu = UIS.MouseIconEnabled
+    local ok, result = pcall(function()
+        local source = game:HttpGet("https://raw.githubusercontent.com/bobloscript/BobloNEXT/main/src.lua?v=" .. tostring(os.clock()))
+        local chunk, err = loadstring(source, "BobloNEXT")
+        assert(chunk, err)
+        return chunk()
+    end)
+    if not ok then unload(); error("[Lennon hub] BobloNEXT could not load: " .. tostring(result)) end
+    UI.Library = result
+    UI.Window = UI.Library:CreateWindow({
+        Title = "Lennon hub",
+        Subtitle = "Kingfisher / Tribes 3v3",
+        Icon = "Lucide:crosshair",
+        Size = UDim2.fromOffset(620, 440),
+        MinSize = Vector2.new(480, 340),
+        Draggable = true,
+        Resizable = true,
+        UseBlur = true,
+        DefaultTab = "Main",
+        ToggleKeybind = Enum.KeyCode.Insert,
+    })
+
+    UI.Controls, UI.Defaults, UI.Specs = {}, {}, {}
+    for key, value in pairs(Config) do UI.Defaults[key] = value end
+    UI.ConfigName = "LennonHub_Tribes_" .. tostring(player.UserId)
+    UI.Building, UI.Updating, UI.Paused = true, false, false
+
+    function UI.Notify(text, kind)
+        UI.Library:Notify({ Title = "Lennon hub", Text = tostring(text), Type = kind or "info", Duration = 4 })
+    end
+
+    function UI.SyncOne(key)
+        local control, spec = UI.Controls[key], UI.Specs[key]
+        if not control then return end
+        local value = spec.Kind == "AddTextbox" and tostring(Config[key]) or Config[key]
+        if control:Get() ~= value then
+            local previous = UI.Updating
+            UI.Updating = true
+            control:Set(value)
+            UI.Updating = previous
+        end
+    end
+
+    function UI.Set(key, value)
+        if not active or UI.Building or UI.Updating or UI.Paused then return end
+        local spec = UI.Specs[key]
+        if type(UI.Defaults[key]) == "number" then
+            value = tonumber(value)
+            if not value or value ~= value or math.abs(value) == math.huge then UI.SyncOne(key); return end
+            value = math.clamp(value, spec.Min, spec.Max)
+            if spec.Integer then value = math.floor(value + 0.5) end
+        elseif type(UI.Defaults[key]) == "boolean" then
+            value = value == true
+        elseif key == "TargetPart" and value ~= "Head" and value ~= "UpperTorso" then
+            UI.SyncOne(key)
+            return
+        end
+        if Config[key] == value then return end
+        if (key == "SilentAim" or key == "AutoBow") and value and not bowAdaptersReady then
+            autoNote = "Native bow adapter unavailable; wait or re-equip your bow"
+            UI.SyncOne(key)
+            UI.Notify(autoNote, "error")
+            return
+        end
+        Config[key] = value
+        if key == "Aim" and not value then
+            Config.AutoBow = false
+            if stopAuto then stopAuto("Aim disabled") end
+            UI.SyncOne("AutoBow")
+        elseif key == "AutoBow" then
+            if value then Config.Aim = true; UI.SyncOne("Aim")
+            elseif stopAuto then stopAuto("OFF") end
+        end
+        UI.SyncOne(key)
+    end
+
+    local function add(parent, key, title, description, kind, minimum, maximum, increment)
+        local spec = { Kind = kind, Min = minimum, Max = maximum, Integer = increment == 1 }
+        UI.Specs[key] = spec
+        local options = {
+            Text = title,
+            Description = description,
+            Flag = "LennonTribes." .. key,
+            Default = kind == "AddTextbox" and tostring(Config[key]) or Config[key],
+            Callback = function(value)
+                -- A delayed callback must not reapply a superseded default/config value.
+                local control = UI.Controls[key]
+                if control and control:Get() ~= value then return end
+                UI.Set(key, value)
+            end,
+        }
+        if kind == "AddSlider" then
+            options.Min, options.Max, options.Increment = minimum, maximum, increment
+        elseif kind == "AddDropdown" then
+            options.Options = { "UpperTorso", "Head" }
+        end
+        UI.Controls[key] = parent[kind](parent, options)
+    end
+
+    local main = UI.Window:AddTab({ Name = "Main", Icon = "Lucide:house" })
+    local aim = UI.Window:AddTab({ Name = "Aim", Icon = "Lucide:crosshair" })
+    local visual = UI.Window:AddTab({ Name = "Visuals", Icon = "Lucide:eye" })
+    local settings = UI.Window:AddTab({ Name = "Settings", Icon = "Lucide:settings" })
+    local targeting = aim:AddSubTab({ Name = "Targeting", Icon = "Lucide:crosshair" })
+    local bow = aim:AddSubTab({ Name = "Auto Bow", Icon = "Lucide:zap" })
+    local advanced = settings:AddSubTab({ Name = "Advanced", Icon = "Lucide:settings" })
+    local configs = settings:AddSubTab({ Name = "Config", Icon = "Lucide:save" })
+
+    main:AddParagraph({ Title = "Bow assistant", Text = "Aim follows during a bow draw. Hide this menu with Insert for automatic bow use. Unload restores the native bow handlers." })
+    add(main, "Aim", "Aim", "Enable bow aiming assistance", "AddToggle")
+    add(main, "AutoBow", "Auto Bow", "Draw and release the equipped bow; pauses while this menu is open", "AddToggle")
+
+    UI.StatusFields = {}
+    for _, entry in ipairs({
+        { "Weapon", "Weapon / Charge", "Loading game adapters..." },
+        { "Target", "Selected Target", "Enable Aim, then draw your bow" },
+        { "Adapter", "Game Adapters", "Charge: waiting | Origin: fallback" },
+        { "Auto", "Auto Bow Status", "Auto: OFF" },
+        { "Error", "Runtime Status", "Ready" },
+    }) do
+        UI.StatusFields[entry[1]] = main:AddTextbox({ Text = entry[2], Description = "Live status", Default = entry[3] })
+    end
+    function UI.Status(key, text)
+        local field = UI.StatusFields[key]
+        if field and field:Get() ~= text then field:Set(text) end
+    end
+    main:AddButton({ Text = "Hide Menu", Icon = "Lucide:eye", Callback = function() UI.Window:Close() end })
+    main:AddButton({ Text = "Unload", Description = "Stop features, remove visuals and restore bow handlers", Callback = unload })
+
+    add(targeting, "SilentAim", "Silent Aim", "Use the native bow direction adapter", "AddToggle")
+    add(targeting, "TargetPart", "Target Part", "Preferred body part", "AddDropdown")
+    add(targeting, "FOVRadius", "Aim FOV", "Target acquisition radius in pixels", "AddSlider", 40, 400, 1)
+    add(targeting, "MaxDistance", "Max Distance", "Maximum target distance in studs", "AddSlider", 1, 5000, 1)
+    add(targeting, "IncludeTrainingDummies", "Training Dummies", "Include training dummies outside a match", "AddToggle")
+    add(targeting, "JumpPrediction", "Jump Prediction", "Account for gravity and estimated landing", "AddToggle")
+    add(targeting, "PreferHighArc", "Prefer High Arc", "Try higher ballistic arcs first", "AddToggle")
+    add(targeting, "ExtraLeadSeconds", "Extra Lead", "Additional prediction time in seconds", "AddSlider", 0, 1, 0.01)
+    add(targeting, "MaxCandidates", "Max Candidates", "Maximum targets checked during acquisition", "AddSlider", 1, 20, 1)
+
+    add(bow, "SmartCharge", "Smart Charge", "Release early when the estimated damage and flight time permit", "AddToggle")
+    add(bow, "AutoMinCharge", "Minimum Charge", "Minimum charge for a smart early release", "AddSlider", 0, 1, 0.01)
+    add(bow, "AutoMaxFlight", "Maximum Early Flight", "Maximum flight time for a smart early release, in seconds", "AddTextbox", 0.01, 15)
+    add(bow, "AutoInterval", "Auto Update Interval", "Seconds between automatic bow checks", "AddTextbox", 0.01, 1)
+    add(bow, "AutoLostTargetGrace", "Lost Target Grace", "Seconds to wait before canceling a lost target", "AddTextbox", 0.01, 5)
+    add(bow, "AutoMaxHold", "Maximum Hold", "Maximum automatic draw duration in seconds", "AddTextbox", 0.1, 15)
+
+    add(visual, "ESP", "ESP", "Highlight enemy players and eligible dummies", "AddToggle")
+    add(visual, "Names", "Names / HP / Distance", "Show names, health and distance with ESP", "AddToggle")
+    add(visual, "Trajectory", "Trajectory", "Show the predicted arrow arc and impact", "AddToggle")
+
+    advanced:AddParagraph({ Title = "Simulation Settings", Text = "Intervals are in seconds. Original precision is retained for trajectory and cast intervals." })
+    add(advanced, "TargetRefresh", "Target Refresh", "Seconds between target-list updates", "AddTextbox", 0.02, 5)
+    add(advanced, "SelectInterval", "Selection Interval", "Seconds between target-selection updates", "AddTextbox", 0.005, 1)
+    add(advanced, "TrajectoryInterval", "Draw Trajectory Interval", "Trajectory update interval while drawing", "AddTextbox", 1 / 240, 1)
+    add(advanced, "IdleTrajectoryInterval", "Idle Trajectory Interval", "Trajectory update interval while idle", "AddTextbox", 1 / 240, 1)
+    add(advanced, "CastStep", "Cast Step", "Time step used for collision prediction", "AddTextbox", 1 / 240, 0.2)
+    add(advanced, "MaxLifetime", "Max Arrow Lifetime", "Maximum simulated arrow lifetime in seconds", "AddTextbox", 0.05, 15)
+    add(advanced, "MaxTravel", "Max Arrow Travel", "Maximum simulated travel distance in studs", "AddTextbox", 1, 10000)
+    advanced:AddButton({ Text = "Run Ballistic Math Tests", Callback = function()
+        if not mathTests then return end
+        local passed, err = pcall(mathTests)
+        UI.Notify(passed and "8 ballistic math tests passed." or tostring(err), passed and "success" or "error")
+    end })
+
+    function UI.SyncControls()
+        for key, spec in pairs(UI.Specs) do
+            -- Textboxes retain uncommitted edits; gameplay changes only these booleans.
+            if spec.Kind == "AddToggle" then UI.SyncOne(key) end
+        end
+    end
+
+    function UI.ApplyControls()
+        local requested = {}
+        for key, control in pairs(UI.Controls) do requested[key] = control:Get() end
+        for key, spec in pairs(UI.Specs) do
+            if spec.Kind ~= "AddToggle" then UI.Set(key, requested[key]) end
+        end
+        for key, spec in pairs(UI.Specs) do
+            if spec.Kind == "AddToggle" and key ~= "Aim" and key ~= "AutoBow" then UI.Set(key, requested[key]) end
+        end
+        UI.Set("Aim", requested.Aim)
+        UI.Set("AutoBow", requested.AutoBow)
+    end
+
+    function UI.Save()
+        local ran, saved, err = pcall(UI.Library.SaveConfig, UI.Library, UI.ConfigName)
+        local success = ran and saved == true
+        UI.Notify(success and "Config saved." or tostring(ran and (err or "Executor file APIs unavailable.") or saved), success and "success" or "error")
+    end
+
+    configs:AddParagraph({ Title = "Configuration", Text = "Save and load this game's settings for this account. Startup uses the Config values at the top of the script." })
+    configs:AddButton({ Text = "Save Config", Icon = "Lucide:save", Callback = UI.Save })
+    configs:AddButton({ Text = "Load Config", Icon = "Lucide:folder-open", Callback = function()
+        if stopAuto then stopAuto("Loading config") end
+        UI.Paused = true
+        local ran, loaded, err = pcall(UI.Library.LoadConfig, UI.Library, UI.ConfigName)
+        UI.Paused = false
+        UI.ApplyControls()
+        local success = ran and loaded == true
+        UI.Notify(success and "Config loaded." or tostring(ran and (err or "No saved config.") or loaded), success and "success" or "error")
+    end })
+    configs:AddButton({ Text = "Reset Settings", Callback = function()
+        UI.Library:Confirm({ Title = "Reset Settings", Text = "Restore the original Config values?", ConfirmText = "Reset", CancelText = "Cancel", Danger = true, Window = UI.Window, Callback = function(confirmed)
+            if not confirmed or not active then return end
+            if stopAuto then stopAuto("Reset settings") end
+            Config.AutoBow, Config.Aim = false, false
+            for key, value in pairs(UI.Defaults) do Config[key] = value end
+            for key in pairs(UI.Controls) do UI.SyncOne(key) end
+        end })
+    end })
+    configs:AddButton({ Text = "Unload Lennon hub", Callback = unload })
+    UI.Building = false
+end
+
+local function isMenuOpen()
+    if not UI.Window then return false end
+    local ok, open = pcall(UI.Window.IsOpen, UI.Window)
+    return ok and open == true
+end
+
+local ring = make("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(Config.FOVRadius * 2, Config.FOVRadius * 2),
+    BackgroundTransparency = 1, BorderSizePixel = 0,
+}, gui)
+make("UICorner", {CornerRadius = UDim.new(1, 0)}, ring)
+make("UIStroke", {Color = Color3.fromRGB(79, 200, 211), Transparency = 0.55, Thickness = 1}, ring)
+local aimDot = make("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(7, 7),
+    BackgroundColor3 = Color3.fromRGB(255, 219, 103), BorderSizePixel = 0, Visible = false,
+}, gui)
+rounded(aimDot, 4)
+
+local modules = {}
+local menuCamera
+local function releaseMenuMouse()
+    if not menuCamera then return end
+    local previous = menuCamera
+    menuCamera = nil
+    local ok, err = pcall(previous.PopMouseUnlock, binding)
+    if not ok then warn("[Lennon hub] Mouse unlock cleanup failed: " .. tostring(err)) end
+end
+local function syncMenuMouse()
+    local desired = active and isMenuOpen() and modules.Camera or nil
+    if desired and (type(desired.PushMouseUnlock) ~= "function" or type(desired.PopMouseUnlock) ~= "function") then
+        desired = nil
+    end
+    if desired == menuCamera then return end
+    releaseMenuMouse()
+    if desired then
+        local ok, err = pcall(desired.PushMouseUnlock, binding)
+        if ok then menuCamera = desired
+        else warn("[Lennon hub] Native menu mouse control unavailable: " .. tostring(err)) end
+    end
+end
+table.insert(destructors, releaseMenuMouse)
+local nativeDraw = false
+local drawing = false
+local drawStart, drawDuration = 0, 1
+local lastTool
+local heldFallback = false
+local selected, selectionTime = nil, -math.huge
+local applyAim -- The native Release callback runs immediately before the bow computes its shot.
+local autoHandler, autoOwned, autoReleaseResult
+local firingContexts = setmetatable({}, {__mode = "k"})
+local autoNext, autoLastClear, autoStarted = 0, 0, 0
+-- BobloNEXT owns dragging, sizing and the Insert keybind.
+-- Native camera mouse-unlock must track all open/close paths, including dock buttons.
+local function syncMenuState()
+    local visible = active and isMenuOpen()
+    if UI.MenuWasVisible ~= visible then
+        if visible then
+            if UI.MenuWasVisible ~= nil then UI.MouseIconBeforeMenu = UIS.MouseIconEnabled end
+            if stopAuto then stopAuto("Paused: menu open") end
+        elseif UI.MenuWasVisible then
+            UIS.MouseIconEnabled = UI.MouseIconBeforeMenu
+        end
+        UI.MenuWasVisible = visible
+    end
+    if visible then UIS.MouseIconEnabled = true end
+    syncMenuMouse()
+end
+local function setMenuVisible(visible)
+    if not active then return end
+    if visible then UI.Window:Open() else UI.Window:Close() end
+    syncMenuState()
+end
+RunService:BindToRenderStep(menuBinding, Enum.RenderPriority.Camera.Value + 4, syncMenuState)
+setMenuVisible(true)
+print("[Lennon hub] Menu ready. Insert hides/shows it.")
+
+
+local function loadModule(path, key)
+    task.spawn(function()
+        local cursor = path[1]
+        for i = 2, #path do
+            cursor = cursor and cursor:WaitForChild(path[i], 12)
+            if not active or not cursor then return end
+        end
+        if not cursor:IsA("ModuleScript") then return end
+        local ok, value = pcall(require, cursor)
+        if not active then return end
+        if not ok or type(value) ~= "table" then
+            warn("[Lennon hub] " .. key .. " unavailable; using fallback.")
+            return
+        end
+        modules[key] = value
+        if key == "Camera" then syncMenuMouse() end
+        if key == "Controller" and type(value.OnViewEvent) == "function" then
+            local subscribed, disconnect = pcall(value.OnViewEvent, function(name, data)
+                if not active or type(data) ~= "table" then return end
+                if name == "Draw" then
+                    lastTool = player.Character and player.Character:FindFirstChildOfClass("Tool")
+                    drawing = data.on == true
+                    selected, selectionTime = nil, -math.huge
+                    if drawing then
+                        drawStart = os.clock()
+                        drawDuration = tonumber(data.time) or 1
+                    end
+                elseif name == "Release" then
+                    local ok, err = true, nil
+                    if applyAim and type(data.charge) == "number" then
+                        ok, err = pcall(applyAim, math.clamp(data.charge, 0, 1), true)
+                    end
+                    drawing, selected = false, nil
+                    if not ok then warn("[Lennon hub] Release adjustment failed: " .. tostring(err)) end
+                end
+            end)
+            if subscribed and type(disconnect) == "function" then
+                nativeDraw = true
+                table.insert(destructors, disconnect)
+            end
+        end
+        if installBowAdapters then installBowAdapters() end
+    end)
+end
+loadModule({ReplicatedStorage, "Shared", "Weapons"}, "Weapons")
+loadModule({ReplicatedStorage, "Shared", "Camera"}, "Camera")
+loadModule({player, "PlayerScripts", "Combat", "Util"}, "Util")
+loadModule({player, "PlayerScripts", "Combat", "Controller"}, "Controller")
+loadModule({player, "PlayerScripts", "Combat", "Handlers", "Bow"}, "Bow")
+loadModule({ReplicatedStorage, "Shared", "Combat"}, "Combat")
+
+local fallbackBows = {
+    short_bow = {drawTime = 0.5, speedMin = 120, speedMax = 250, gravity = 55, radius = 0.3, range = 400},
+    longbow = {drawTime = 1.1, speedMin = 160, speedMax = 380, gravity = 32, radius = 0.28, range = 600},
+}
+
+local function bowInfo()
+    local character = player.Character
+    local tool = character and character:FindFirstChildOfClass("Tool")
+    if tool ~= lastTool then
+        drawing, heldFallback = false, false
+        selected, selectionTime = nil, -math.huge
+        lastTool = tool
+    end
+    if not tool then return nil end
+    local id = tool:GetAttribute("WeaponId")
+    local tuning = fallbackBows[id]
+    local weapons = modules.Weapons
+    if weapons and type(weapons.Get) == "function" then
+        local ok, definition = pcall(weapons.Get, id)
+        if ok and type(definition) == "table" and definition.kind == "Bow" then
+            tuning = definition.tuning or tuning
+        end
+    end
+    if not tuning then return nil end
+    return tool, tuning, id
+end
+
+local function chargeFor(tuning)
+    if drawing or (not nativeDraw and heldFallback) then
+        local duration = nativeDraw and drawDuration or (tuning.drawTime or 1)
+        return math.clamp((os.clock() - drawStart) / math.max(0.001, duration), 0, 1), true
+    end
+    return 1, false -- Idle visualization is explicitly a full-draw preview.
+end
+
+local function attribute(model, owner, key)
+    local value = model and model:GetAttribute(key)
+    if value == nil and owner then value = owner:GetAttribute(key) end
+    return value
+end
+
+local function isEnemy(model, owner)
+    if model == player.Character or owner == player or not model:IsDescendantOf(Workspace) then return false end
+    if attribute(model, owner, "Alive") == false then return false end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    local myMatch = attribute(player.Character, player, "MatchId")
+    local theirMatch = attribute(model, owner, "MatchId")
+    local myTeam = attribute(player.Character, player, "Team")
+    local theirTeam = attribute(model, owner, "Team")
+    if type(myMatch) == "string" and myMatch ~= "" then
+        return theirMatch == myMatch and theirTeam ~= nil and myTeam ~= nil and theirTeam ~= myTeam
+    end
+    return Config.IncludeTrainingDummies and CollectionService:HasTag(model, "TrainingDummy")
+end
+
+local records = {}
+local function refreshTargets()
+    local visited, valid = {}, {}
+    local function visit(model, owner)
+        if not model or not model:IsA("Model") or visited[model] then return end
+        visited[model] = true
+        if not isEnemy(model, owner) then return end
+        local root = model:FindFirstChild("HumanoidRootPart")
+        local part = model:FindFirstChild(Config.TargetPart) or model:FindFirstChild("Torso")
+            or model:FindFirstChild("Head") or root
+        if not root or not root:IsA("BasePart") or not part or not part:IsA("BasePart") then return end
+        valid[model] = true
+        local head = model:FindFirstChild("Head")
+        local adornee = head and head:IsA("BasePart") and head or root
+        local record = records[model]
+        if not record then
+            local highlight = make("Highlight", {
+                Adornee = model, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+                FillColor = Color3.fromRGB(243, 87, 89), FillTransparency = 0.8,
+                OutlineColor = Color3.fromRGB(255, 146, 127), OutlineTransparency = 0.1,
+            }, visuals)
+            local billboard = make("BillboardGui", {
+                Adornee = adornee, AlwaysOnTop = true,
+                Size = UDim2.fromOffset(220, 42), StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0),
+                MaxDistance = Config.MaxDistance,
+            }, gui)
+            local label = make("TextLabel", {
+                Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, TextSize = 12,
+                Font = Enum.Font.Code, TextColor3 = Color3.new(1, 1, 1),
+                TextStrokeTransparency = 0.25, Text = "",
+            }, billboard)
+            record = {highlight = highlight, billboard = billboard, label = label, model = model}
+            records[model] = record
+        end
+        record.owner, record.root, record.part = owner, root, part
+        record.humanoid = model:FindFirstChildOfClass("Humanoid")
+        record.billboard.Adornee = adornee
+    end
+    for _, other in ipairs(Players:GetPlayers()) do visit(other.Character, other) end
+    for _, tag in ipairs({"Combatant", "Bot", "TrainingDummy"}) do
+        for _, model in ipairs(CollectionService:GetTagged(tag)) do
+            if model:IsA("Model") then visit(model, Players:GetPlayerFromCharacter(model)) end
+        end
+    end
+    for model, record in pairs(records) do
+        if not valid[model] then
+            if selected and selected.record == record then selected, selectionTime = nil, -math.huge end
+            record.highlight:Destroy()
+            record.billboard:Destroy()
+            records[model] = nil
+        end
+    end
+end
+
+local function exclusionContext()
+    local list, seen = {}, {}
+    local function add(object)
+        if object and not seen[object] then
+            seen[object] = true
+            table.insert(list, object)
+        end
+    end
+    add(visuals)
+    add(player.Character)
+    for _, name in ipairs({"FX", "Projectiles"}) do
+        local folder = Workspace:FindFirstChild(name)
+        add(folder)
+    end
+    local myMatch = attribute(player.Character, player, "MatchId")
+    local myTeam = attribute(player.Character, player, "Team")
+    local function teammate(model, owner)
+        if model and model:IsA("Model") and myMatch ~= nil and myMatch ~= "" and myTeam ~= nil
+            and attribute(model, owner, "MatchId") == myMatch
+            and attribute(model, owner, "Team") == myTeam then
+            add(model)
+        end
+    end
+    for _, other in ipairs(Players:GetPlayers()) do teammate(other.Character, other) end
+    for _, tag in ipairs({"Combatant", "Bot"}) do
+        for _, model in ipairs(CollectionService:GetTagged(tag)) do teammate(model, nil) end
+    end
+    return {list = list, seen = seen, params = {}}
+end
+
+local function exclusions(extra, context)
+    context = context or exclusionContext()
+    local key = extra or false
+    if context.params[key] then return context.params[key] end
+    local list = table.clone(context.list)
+    if extra and not context.seen[extra] then table.insert(list, extra) end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = list
+    params.IgnoreWater = true
+    context.params[key] = params
+    return params
+end
+
+local function shotOrigin(tool, params)
+    local util = modules.Util
+    if util and type(util.ShotOrigin) == "function" then
+        local ok, origin = pcall(util.ShotOrigin, tool, "Muzzle")
+        if ok and typeof(origin) == "Vector3" then return origin end
+    end
+    local character = player.Character
+    local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
+    if not head or not head:IsA("BasePart") then return nil end
+    local fallback = head.Position
+    if head.Name == "HumanoidRootPart" then fallback = fallback + Vector3.new(0, 1.5, 0) end
+    local muzzle = tool:FindFirstChild("Muzzle", true)
+    local handle = tool:FindFirstChild("Handle")
+    local point = muzzle and muzzle:IsA("Attachment") and muzzle.WorldPosition
+        or (handle and handle:IsA("BasePart") and handle.Position) or fallback
+    if (point - fallback).Magnitude > 7 then return fallback end
+    local delta = point - fallback
+    if delta.Magnitude > 0.001 and Workspace:Raycast(fallback, delta, params) then return fallback end
+    return point
+end
+
+local function shotDirection(origin, params)
+    local util = modules.Util
+    if util and type(util.AimDirection) == "function" then
+        local ok, direction = pcall(util.AimDirection, origin)
+        if ok and typeof(direction) == "Vector3" and direction.Magnitude > 0.001 then return direction.Unit end
+    end
+    local camera = Workspace.CurrentCamera
+    if not camera then return nil end
+    local hit = Workspace:Raycast(camera.CFrame.Position, camera.CFrame.LookVector * 1000, params)
+    local point = hit and hit.Position or camera.CFrame.Position + camera.CFrame.LookVector * 1000
+    local delta = point - origin
+    return delta.Magnitude > 0.001 and delta.Unit or camera.CFrame.LookVector
+end
+
+-- Original numeric solver. Coefficients are in ascending powers.
+local function finite(x)
+    return type(x) == "number" and x == x and math.abs(x) < math.huge
+end
+
+local function polynomialValue(c, x)
+    local y = c[#c]
+    for i = #c - 1, 1, -1 do y = y * x + c[i] end
+    return y
+end
+
+local function polynomialScale(c, x)
+    local y = math.abs(c[#c])
+    for i = #c - 1, 1, -1 do y = y * math.abs(x) + math.abs(c[i]) end
+    return y
+end
+
+local function polynomialRoots(c, lo, hi)
+    while #c > 1 and c[#c] == 0 do table.remove(c) end
+    local magnitude = 0
+    for _, value in ipairs(c) do magnitude = math.max(magnitude, math.abs(value)) end
+    if magnitude == 0 or #c == 1 then return {} end
+    for i = 1, #c do c[i] = c[i] / magnitude end
+    if #c == 2 then
+        local root = -c[1] / c[2]
+        return root >= lo and root <= hi and {root} or {}
+    end
+    local derivative = {}
+    for i = 2, #c do derivative[i - 1] = (i - 1) * c[i] end
+    local boundaries = {lo}
+    for _, value in ipairs(polynomialRoots(derivative, lo, hi)) do
+        if value > lo and value < hi then table.insert(boundaries, value) end
+    end
+    table.insert(boundaries, hi)
+    table.sort(boundaries)
+    local roots = {}
+    local function add(root)
+        for _, existing in ipairs(roots) do
+            if math.abs(existing - root) < 1e-8 then return end
+        end
+        table.insert(roots, root)
+    end
+    for _, x in ipairs(boundaries) do
+        if math.abs(polynomialValue(c, x)) <= 1e-12 * math.max(1e-30, polynomialScale(c, x)) then
+            add(x)
+        end
+    end
+    for i = 1, #boundaries - 1 do
+        local a, b = boundaries[i], boundaries[i + 1]
+        local fa, fb = polynomialValue(c, a), polynomialValue(c, b)
+        if (fa < 0 and fb > 0) or (fa > 0 and fb < 0) then
+            for _ = 1, 44 do
+                local middle = (a + b) * 0.5
+                local fm = polynomialValue(c, middle)
+                if (fa < 0 and fm < 0) or (fa > 0 and fm > 0) then
+                    a, fa = middle, fm
+                else
+                    b = middle
+                end
+            end
+            add((a + b) * 0.5)
+        end
+    end
+    table.sort(roots)
+    return roots
+end
+
+local function intercepts(origin, target, velocity, speed, gravity, lifetime, targetAcceleration)
+    if not finite(speed) or speed <= 0 or not finite(lifetime) or lifetime <= 0 then return {} end
+    targetAcceleration = targetAcceleration or Vector3.zero
+    local relativeGravity = gravity - targetAcceleration
+    local offset = target - origin
+    if offset.Magnitude < 0.001 then return {} end
+    local c = {
+        offset:Dot(offset),
+        2 * offset:Dot(velocity),
+        velocity:Dot(velocity) - offset:Dot(relativeGravity) - speed * speed,
+        -velocity:Dot(relativeGravity),
+        0.25 * relativeGravity:Dot(relativeGravity),
+    }
+    for i = 1, #c do
+        c[i] = c[i] * lifetime ^ (i - 1)
+        if not finite(c[i]) then return {} end
+    end
+    local solutions = {}
+    for _, x in ipairs(polynomialRoots(c, 0.000001 / lifetime, 1)) do
+        local time = x * lifetime
+        local launch = offset / time + velocity - 0.5 * relativeGravity * time
+        if finite(launch.Magnitude) and launch.Magnitude > 0
+            and math.abs(launch.Magnitude - speed) <= math.max(0.0001, speed * 0.00001) then
+            table.insert(solutions, {
+                time = time,
+                direction = launch.Unit,
+                impact = target + velocity * time + 0.5 * targetAcceleration * time * time,
+            })
+        end
+    end
+    return solutions
+end
+
+
+local function parameters(tuning, charge)
+    local minimum = tonumber(tuning.speedMin or tuning.speed) or 120
+    local maximum = tonumber(tuning.speedMax or tuning.speed) or minimum
+    local speed = minimum + (maximum - minimum) * charge
+    return speed, Vector3.new(0, -(tonumber(tuning.gravity) or 55), 0), tonumber(tuning.radius) or 0.3
+end
+
+local function trace(origin, direction, speed, gravity, duration, params, radius, collect)
+    local position, velocity = origin, direction * speed
+    local points = collect and {origin} or nil
+    local age, traveled = 0, 0
+    while age < duration - 1e-7 do
+        local dt = math.min(Config.CastStep, duration - age)
+        local delta = velocity * dt + 0.5 * gravity * dt * dt
+        if traveled + delta.Magnitude > Config.MaxTravel then return points, nil, true end
+        local hit
+        if delta.Magnitude > 0.0001 then
+            if radius > 0 then
+                hit = Workspace:Spherecast(position, radius, delta, params)
+            else
+                hit = Workspace:Raycast(position, delta, params)
+            end
+        end
+        if hit then
+            if points then table.insert(points, position + delta.Unit * hit.Distance) end
+            return points, hit, false
+        end
+        position = position + delta
+        velocity = velocity + gravity * dt
+        traveled = traveled + delta.Magnitude
+        age = age + dt
+        if points then table.insert(points, position) end
+    end
+    return points, nil, false
+end
+
+-- Landing is a bounded estimate on nearby, nearly level static ground. A ledge,
+-- moving platform or slope keeps the airborne model instead of inventing a floor.
+local function estimateLanding(record, velocity, targetGravity)
+    local root, humanoid = record.root, record.humanoid
+    local standingHeight = root.Size.Y * 0.5 + math.max(0, humanoid.HipHeight)
+    if humanoid.RigType == Enum.HumanoidRigType.R6 then
+        local leg = record.model:FindFirstChild("Left Leg") or record.model:FindFirstChild("Right Leg")
+        if not leg or not leg:IsA("BasePart") then return nil end
+        standingHeight = standingHeight + leg.Size.Y
+    end
+    local excluded, seen = {visuals}, {[visuals] = true}
+    local function exclude(model)
+        if model and not seen[model] then seen[model] = true; table.insert(excluded, model) end
+    end
+    exclude(record.model)
+    exclude(player.Character)
+    for _, other in ipairs(Players:GetPlayers()) do exclude(other.Character) end
+    for model in pairs(records) do exclude(model) end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = excluded
+    params.IgnoreWater, params.RespectCanCollide = true, true
+    params.CollisionGroup = root.CollisionGroup
+    local rootPosition = root.Position
+    local function groundAt(x, z)
+        local hit = Workspace:Raycast(Vector3.new(x, rootPosition.Y + 1, z), Vector3.new(0, -192, 0), params)
+        if not hit or hit.Normal.Y < 0.98 then return nil end
+        if hit.Instance:IsA("BasePart") and not hit.Instance.Anchored then return nil end
+        return hit.Position.Y
+    end
+    local firstGround = groundAt(rootPosition.X, rootPosition.Z)
+    if firstGround == nil then return nil end
+    local clearance = rootPosition.Y - firstGround - standingHeight
+    if clearance < -0.5 then return nil end
+    local landingTime = (velocity.Y + math.sqrt(velocity.Y * velocity.Y + 2 * targetGravity * math.max(0, clearance))) / targetGravity
+    if not finite(landingTime) or landingTime < 0 or landingTime > Config.MaxLifetime + 1 then return nil end
+    local lastGround = groundAt(rootPosition.X + velocity.X * landingTime, rootPosition.Z + velocity.Z * landingTime)
+    if lastGround == nil or math.abs(lastGround - firstGround) > 0.5 then return nil end
+    -- Recompute for the checked landing surface; the small allowed height change
+    -- limits extrapolation error without tracing a whole character trajectory.
+    clearance = rootPosition.Y - lastGround - standingHeight
+    if clearance < -0.5 then return nil end
+    landingTime = (velocity.Y + math.sqrt(velocity.Y * velocity.Y + 2 * targetGravity * math.max(0, clearance))) / targetGravity
+    return landingTime, lastGround + standingHeight + record.part.Position.Y - rootPosition.Y
+end
+
+local function targetMotion(record, velocity)
+    local position, rootPosition = record.part.Position, record.root.Position
+    local humanoid = record.humanoid
+    local state = humanoid and humanoid:GetState()
+    local targetGravity = Workspace.Gravity
+    local now = os.clock()
+    local cached = record.jumpMotion
+    if cached and now - cached.sampledAt < 0.05 and cached.root == record.root and cached.part == record.part
+        and cached.position == position and cached.rootPosition == rootPosition and cached.velocity == velocity
+        and cached.state == state and cached.gravity == targetGravity and cached.enabled == Config.JumpPrediction then
+        return cached
+    end
+    local motion = {
+        position = position, rootPosition = rootPosition, velocity = velocity, acceleration = Vector3.zero,
+        root = record.root, part = record.part, sampledAt = now, state = state,
+        gravity = targetGravity, enabled = Config.JumpPrediction,
+    }
+    if Config.JumpPrediction and humanoid and finite(targetGravity) and targetGravity > 0
+        and (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) then
+        motion.acceleration = Vector3.new(0, -targetGravity, 0)
+        motion.landingTime, motion.landingY = estimateLanding(record, velocity, targetGravity)
+    end
+    record.jumpMotion = motion
+    return motion
+end
+
+local function motionIntercepts(origin, motion, speed, gravity, lifetime, lead)
+    lead = finite(lead) and math.max(0, lead) or 0
+    local solutions = {}
+    local remainingAirTime = motion.landingTime and math.max(0, motion.landingTime - lead) or lifetime
+    if remainingAirTime > 0 then
+        local position = motion.position + motion.velocity * lead + 0.5 * motion.acceleration * lead * lead
+        local velocity = motion.velocity + motion.acceleration * lead
+        solutions = intercepts(origin, position, velocity, speed, gravity, math.min(lifetime, remainingAirTime), motion.acceleration)
+    end
+    if motion.landingTime then
+        local velocity = Vector3.new(motion.velocity.X, 0, motion.velocity.Z)
+        local position = Vector3.new(motion.position.X, motion.landingY, motion.position.Z) + velocity * lead
+        for _, solution in ipairs(intercepts(origin, position, velocity, speed, gravity, lifetime)) do
+            if solution.time + lead >= motion.landingTime - 0.00001 then
+                local duplicate = false
+                for _, existing in ipairs(solutions) do
+                    if math.abs(solution.time - existing.time) < 0.00001 then duplicate = true; break end
+                end
+                if not duplicate then table.insert(solutions, solution) end
+            end
+        end
+    end
+    table.sort(solutions, function(a, b) return a.time < b.time end)
+    return solutions
+end
+
+local function solveRecord(record, origin, speed, gravity)
+    if not record.model.Parent or not record.part.Parent or not record.root.Parent
+        or not isEnemy(record.model, record.owner) then return {} end
+    local velocity = record.root.AssemblyLinearVelocity
+    if not finite(velocity.Magnitude) or velocity.Magnitude > 1000 then return {} end
+    local motion = targetMotion(record, velocity)
+    local solutions = motionIntercepts(origin, motion, speed, gravity, Config.MaxLifetime, Config.ExtraLeadSeconds)
+    if Config.PreferHighArc then
+        local reverse = {}
+        for i = #solutions, 1, -1 do table.insert(reverse, solutions[i]) end
+        return reverse
+    end
+    return solutions
+end
+
+local function selectTarget(origin, tuning, speed, gravity, radius, force, context)
+    local camera = Workspace.CurrentCamera
+    if not camera then selected = nil; return nil end
+    local now = os.clock()
+    if not force and now - selectionTime < Config.SelectInterval then return selected end
+    selectionTime = now
+    local range = math.min(Config.MaxDistance, tonumber(tuning.range) or Config.MaxDistance)
+    local function check(record)
+        if not record.part.Parent or not isEnemy(record.model, record.owner)
+            or (record.part.Position - origin).Magnitude > range then return nil end
+        if Config.SilentAim then
+            local point, onScreen = camera:WorldToViewportPoint(record.part.Position)
+            if not onScreen or point.Z <= 0
+                or (Vector2.new(point.X, point.Y) - camera.ViewportSize * 0.5).Magnitude > Config.FOVRadius then return nil end
+        end
+        local params = exclusions(record.model, context)
+        for _, solution in ipairs(solveRecord(record, origin, speed, gravity)) do
+            local pitch = math.asin(math.clamp(solution.direction.Y, -1, 1))
+            if pitch >= math.rad(-80) and pitch <= math.rad(78) then
+                local _, hit, exhausted = trace(origin, solution.direction, speed, gravity, solution.time, params, radius, false)
+                if not hit and not exhausted then return {record = record, solution = solution} end
+            end
+        end
+        return nil
+    end
+    -- FOV is an acquisition rule. Ballistic camera elevation must not break a draw lock.
+    if selected then
+        local retained = check(selected.record)
+        if retained then selected = retained; return selected end
+    end
+    local center = camera.ViewportSize * 0.5
+    local candidates = {}
+    for _, record in pairs(records) do
+        if record.part.Parent and isEnemy(record.model, record.owner) then
+            local projected, onScreen = camera:WorldToViewportPoint(record.part.Position)
+            local screenDistance = (Vector2.new(projected.X, projected.Y) - center).Magnitude
+            local distance = (record.part.Position - origin).Magnitude
+            if onScreen and projected.Z > 0 and screenDistance <= Config.FOVRadius and distance <= range then
+                table.insert(candidates, {record = record, score = screenDistance})
+            end
+        end
+    end
+    table.sort(candidates, function(a, b) return a.score < b.score end)
+    selected = nil
+    for i = 1, math.min(#candidates, Config.MaxCandidates) do
+        local choice = check(candidates[i].record)
+        if choice then selected = choice; return choice end
+    end
+    return nil
+end
+
+local function allowedToAim()
+    if renderFailed or not windowFocused or not Config.Aim or not (drawing or (not nativeDraw and heldFallback))
+        or UIS:GetFocusedTextBox() or GuiService.MenuIsOpen or isMenuOpen() then return false end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    return humanoid ~= nil and humanoid.Health > 0 and attribute(character, player, "Alive") ~= false
+end
+
+-- Make the camera's 1000-stud endpoint lie on the desired muzzle ray.
+local function cameraDirection(origin, direction, cameraPosition)
+    local offset = cameraPosition - origin
+    local along = offset:Dot(direction)
+    local perpendicularSquared = math.max(0, offset:Dot(offset) - along * along)
+    local distance = along + math.sqrt(math.max(1, 1000 * 1000 - perpendicularSquared))
+    return (origin + direction * distance - cameraPosition).Unit
+end
+
+local function setView(direction)
+    local camera = Workspace.CurrentCamera
+    if not camera or not finite(direction.Magnitude) or direction.Magnitude < 0.001 then return end
+    local yaw = math.atan2(-direction.X, -direction.Z)
+    local pitch = math.clamp(math.asin(math.clamp(direction.Y, -1, 1)), math.rad(-80), math.rad(78))
+    local nativeCamera = modules.Camera
+    if nativeCamera and type(nativeCamera.SetLook) == "function" then pcall(nativeCamera.SetLook, yaw, pitch) end
+    camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.fromEulerAnglesYXZ(pitch, yaw, 0)
+end
+
+applyAim = function(forcedCharge, forceCheck, context)
+    if not active or not allowedToAim() then return nil end
+    local tool, tuning = bowInfo()
+    if not tool or not allowedToAim() then return nil end
+    context = context or exclusionContext()
+    local charge = forcedCharge
+    if charge == nil then charge = chargeFor(tuning) end
+    local speed, gravity, radius = parameters(tuning, charge)
+    local params = exclusions(nil, context)
+    local origin = shotOrigin(tool, params)
+    if not origin then return nil end
+    local choice = selectTarget(origin, tuning, speed, gravity, radius, forceCheck, context)
+    if not choice then return nil end
+    if Config.SilentAim then return bowAdaptersReady and choice or nil end
+    local camera = Workspace.CurrentCamera
+    local originalView = camera.CFrame
+    local function reject()
+        setView(originalView.LookVector)
+        camera.CFrame = originalView
+        selected = nil
+        return nil
+    end
+    local solution
+    -- Re-evaluate because the game's third-person ShotOrigin depends on camera direction.
+    for _ = 1, 3 do
+        origin = shotOrigin(tool, params)
+        if not origin then return reject() end
+        local roots = solveRecord(choice.record, origin, speed, gravity)
+        solution = roots[1]
+        if not solution then return reject() end
+        -- Preserve the collision-approved arc if several roots exist.
+        for _, candidate in ipairs(roots) do
+            if math.abs(candidate.time - choice.solution.time) < math.abs(solution.time - choice.solution.time) then
+                solution = candidate
+            end
+        end
+        local launchPitch = math.asin(math.clamp(solution.direction.Y, -1, 1))
+        if launchPitch < math.rad(-80) or launchPitch > math.rad(78) then return reject() end
+        setView(cameraDirection(origin, solution.direction, camera.CFrame.Position))
+        local actual = shotDirection(origin, params)
+        if actual and actual:Dot(solution.direction) < 0.999999 then
+            local corrected = camera.CFrame.LookVector + solution.direction - actual
+            if corrected.Magnitude > 0.001 then setView(corrected.Unit) end
+        end
+    end
+    local finalOrigin = shotOrigin(tool, params)
+    if not finalOrigin then return reject() end
+    local actualDirection = shotDirection(finalOrigin, params)
+    if not actualDirection then return reject() end
+    local endpoint = finalOrigin + actualDirection * speed * solution.time
+        + gravity * (0.5 * solution.time * solution.time)
+    local size = choice.record.part.Size
+    local tolerance = radius + math.max(0.25, math.min(size.X, size.Y, size.Z) * 0.35)
+    if (endpoint - solution.impact).Magnitude > tolerance then return reject() end
+    if forceCheck or not choice.finalCheck or os.clock() - choice.finalCheck >= Config.SelectInterval then
+        local _, hit, exhausted = trace(finalOrigin, actualDirection, speed, gravity,
+            solution.time, exclusions(choice.record.model, context), radius, false)
+        if hit or exhausted then return reject() end
+        choice.finalCheck = os.clock()
+    end
+    choice.solution = solution
+    return choice
+end
+
+local function clearRecordShot(record, origin, tuning, charge, context)
+    if not record or not record.part.Parent or not isEnemy(record.model, record.owner) then return nil end
+    if (record.part.Position - origin).Magnitude > math.min(Config.MaxDistance, tonumber(tuning.range) or Config.MaxDistance) then return nil end
+    local speed, gravity, radius = parameters(tuning, charge)
+    for _, solution in ipairs(solveRecord(record, origin, speed, gravity)) do
+        local pitch = math.asin(math.clamp(solution.direction.Y, -1, 1))
+        if pitch >= math.rad(-80) and pitch <= math.rad(78) then
+            local _, hit, exhausted = trace(origin, solution.direction, speed, gravity,
+                solution.time, exclusions(record.model, context), radius, false)
+            if not hit and not exhausted then return {record = record, solution = solution} end
+        end
+    end
+    return nil
+end
+
+local function findShot(tool, tuning, charge, context)
+    context = context or exclusionContext()
+    local origin = shotOrigin(tool, exclusions(nil, context))
+    if not origin then return nil end
+    local speed, gravity, radius = parameters(tuning, charge)
+    return selectTarget(origin, tuning, speed, gravity, radius, true, context)
+end
+
+stopAuto = function(reason)
+    local owned = autoOwned
+    autoOwned = nil
+    if owned then
+        -- Cancel before releasing the native input; a release alone would fire.
+        owned.bufferedAt = nil
+        if owned.drawing then
+            local ok, err = pcall(owned.CancelDraw, owned)
+            if not ok or owned.drawing then
+                owned.drawing = false -- Never turn a failed cancellation into a release shot.
+                if not ok then warn("[Lennon hub] Native draw cancellation failed: " .. tostring(err)) end
+            end
+        end
+        owned.m1Down = false
+        local equipped = player.Character and player.Character:FindFirstChildOfClass("Tool")
+        if owned.ctx and owned.ctx.tool == equipped and modules.Controller then
+            pcall(modules.Controller.Dispatch, "Primary", false)
+        end
+    end
+    autoNote = "Auto: " .. (Config.AutoBow and (reason or "OFF") or "OFF")
+end
+table.insert(destructors, function() stopAuto("OFF") end)
+
+local bowHookCleanup
+installBowAdapters = function()
+    if not active or bowHookCleanup then return end
+    local bow, util, controller = modules.Bow, modules.Util, modules.Controller
+    if not bow or not util or not controller or not nativeDraw
+        or type(bow.Update) ~= "function" or type(bow.Fire) ~= "function"
+        or type(bow.CancelDraw) ~= "function" or type(bow.Charge) ~= "function"
+        or type(util.AssistDirection) ~= "function" or type(controller.Dispatch) ~= "function" then return end
+    local oldUpdate, oldFire, oldAssist = bow.Update, bow.Fire, util.AssistDirection
+    local blockedAutoShot = {}
+    local updateWrapper, fireWrapper, assistWrapper
+    updateWrapper = function(self, ...)
+        if active and self.ctx then
+            local equipped = player.Character and player.Character:FindFirstChildOfClass("Tool")
+            if self.ctx.tool == equipped then autoHandler = self end
+        end
+        return oldUpdate(self, ...)
+    end
+    fireWrapper = function(self, ...)
+        local equipped = player.Character and player.Character:FindFirstChildOfClass("Tool")
+        if not active or not self.drawing or not self.ctx or self.ctx.tool ~= equipped then
+            return oldFire(self, ...)
+        end
+        local assisted = Config.Aim and windowFocused and not renderFailed
+            and not UIS:GetFocusedTextBox() and not GuiService.MenuIsOpen and not isMenuOpen()
+        local charge = self:Charge()
+        local automatic = autoOwned == self
+        if automatic then autoReleaseResult = false end
+        local choice
+        if assisted then
+            if Config.SilentAim then choice = findShot(equipped, self.tuning, charge)
+            else choice = applyAim(charge, true) end
+        end
+        if automatic and not choice then
+            autoReleaseResult = false
+            stopAuto("Waiting for a clear shot")
+            return
+        end
+        local thread = coroutine.running()
+        local previous = firingContexts[thread]
+        local shotScope
+        if assisted and (Config.SilentAim or automatic) and choice then
+            shotScope = {record = choice.record, tuning = self.tuning, charge = charge, tool = equipped, automatic = automatic}
+            firingContexts[thread] = shotScope
+        else firingContexts[thread] = nil end
+        local result = table.pack(pcall(oldFire, self, ...))
+        firingContexts[thread] = previous
+        if not result[1] and result[2] == blockedAutoShot then
+            self.bufferedAt = nil
+            pcall(self.CancelDraw, self)
+            self.m1Down = false
+            autoOwned, autoReleaseResult = nil, false
+            autoNote = "Auto: canceled; shot path changed"
+            return
+        end
+        if not result[1] then
+            if automatic then
+                stopAuto("Native release failed")
+                Config.AutoBow = false
+                autoNote = "Auto: ERROR; see output and re-enable"
+            end
+            error(result[2], 0)
+        end
+        if automatic then
+            autoReleaseResult = shotScope ~= nil and shotScope.used == true
+            if not autoReleaseResult then autoOwned = nil; autoNote = "Auto: native release canceled" end
+        end
+        return table.unpack(result, 2, result.n)
+    end
+    assistWrapper = function(origin, direction, preservePitch, ...)
+        local scope = firingContexts[coroutine.running()]
+        local equipped = player.Character and player.Character:FindFirstChildOfClass("Tool")
+        if scope and scope.automatic and (not active or renderFailed or not windowFocused
+            or not Config.Aim or not Config.AutoBow or isMenuOpen() or GuiService.MenuIsOpen
+            or UIS:GetFocusedTextBox() or scope.tool ~= equipped or scope.tool.Parent ~= player.Character
+            or typeof(origin) ~= "Vector3") then
+            error(blockedAutoShot, 0)
+        end
+        if active and not renderFailed and Config.Aim and scope and (Config.SilentAim or scope.automatic)
+            and scope.tool == equipped and scope.tool.Parent == player.Character
+            and typeof(origin) == "Vector3" then
+            -- The bow supplies its actual muzzle origin here, after its Release event.
+            local ok, choice = pcall(function()
+                return clearRecordShot(scope.record, origin, scope.tuning, scope.charge, exclusionContext())
+            end)
+            if ok and choice then scope.used = true; return choice.solution.direction end
+            if scope.automatic then error(blockedAutoShot, 0) end
+        end
+        return oldAssist(origin, direction, preservePitch, ...)
+    end
+    local function restore()
+        if bow.Update == updateWrapper then bow.Update = oldUpdate end
+        if bow.Fire == fireWrapper then bow.Fire = oldFire end
+        if util.AssistDirection == assistWrapper then util.AssistDirection = oldAssist end
+    end
+    local ok, err = pcall(function()
+        bow.Update, bow.Fire, util.AssistDirection = updateWrapper, fireWrapper, assistWrapper
+    end)
+    if not ok then
+        pcall(restore)
+        autoNote = "Native bow adapter unavailable"
+        warn("[Lennon hub] Bow adapter could not be installed: " .. tostring(err))
+        return
+    end
+    bowHookCleanup = restore
+    bowAdaptersReady = true
+    table.insert(destructors, function()
+        table.clear(firingContexts)
+        autoHandler = nil
+        bowAdaptersReady = false
+        restore()
+    end)
+end
+installBowAdapters()
+
+local function readyToRelease(charge, choice, tuning, weaponId)
+    if not choice then return false end
+    if charge >= 0.995 then return true end
+    if not Config.SmartCharge or charge < Config.AutoMinCharge or choice.solution.time > Config.AutoMaxFlight then return false end
+    local maximum = tonumber(tuning.damage) or 0
+    local minimum = tonumber(tuning.damageMin) or maximum
+    local damage = minimum + (maximum - minimum) * charge
+    local combat = modules.Combat
+    if combat and type(combat.DrawnShot) == "function" then
+        local ok, amount = pcall(combat.DrawnShot, tuning, charge)
+        if ok and type(amount) == "number" then damage = amount end
+    end
+    if modules.Util and type(modules.Util.ItemBonus) == "function" then
+        local ok, bonus = pcall(modules.Util.ItemBonus, weaponId)
+        if ok and finite(bonus) and bonus > 0 then damage = damage * bonus end
+    end
+    -- This is a base-damage estimate; armor and server-side modifiers are not known.
+    local humanoid = choice.record.humanoid
+    return humanoid ~= nil and humanoid.Health > 0 and damage >= humanoid.Health
+end
+
+local function updateAutoBow(now, tool, tuning, weaponId)
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local blocked = not active or renderFailed or not Config.AutoBow or not Config.Aim or not bowAdaptersReady
+        or not windowFocused or isMenuOpen() or GuiService.MenuIsOpen or UIS:GetFocusedTextBox()
+        or not tool or not humanoid or humanoid.Health <= 0 or attribute(character, player, "Alive") == false
+        or UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    if blocked then
+        if autoOwned then stopAuto("Paused")
+        elseif Config.AutoBow then autoNote = "Auto: paused; hide menu, release LMB" end
+        return
+    end
+    local handler = autoHandler
+    if not handler or not handler.ctx or handler.ctx.tool ~= tool then
+        if autoOwned then stopAuto("Weapon changed") end
+        autoNote = "Auto: waiting for native bow; re-equip"
+        return
+    end
+    if autoOwned and autoOwned ~= handler then stopAuto("Weapon changed") end
+    if now < autoNext then return end
+    autoNext = now + Config.AutoInterval
+    local util = modules.Util
+    if type(util.CanAct) == "function" then
+        local ok, canAct = pcall(util.CanAct)
+        if not ok or not canAct then stopAuto("Waiting until bow can act"); return end
+    end
+    if type(util.IsMouseUnlocked) == "function" then
+        local ok, unlocked = pcall(util.IsMouseUnlocked)
+        if ok and unlocked then stopAuto("Paused: game menu open"); return end
+    end
+    if not autoOwned then
+        if handler.drawing then autoNote = "Auto: manual draw"; return end
+        local plan = findShot(tool, tuning, 1)
+        if not plan then autoNote = "Auto: no clear target in FOV"; return end
+        autoOwned, autoStarted, autoLastClear = handler, now, now
+        local ok = pcall(modules.Controller.Dispatch, "Primary", true)
+        if not ok or not handler.drawing then
+            stopAuto("Waiting for cooldown/ammo")
+            autoNext = now + 0.2
+            return
+        end
+        selected = plan
+        selectionTime = -math.huge
+    end
+    if not handler.drawing then stopAuto("Ready"); return end
+    local charge = math.clamp(handler:Charge(), 0, 1)
+    local choice = findShot(tool, tuning, charge)
+    if choice then autoLastClear = now end
+    if not choice and now - autoLastClear > Config.AutoLostTargetGrace then
+        -- A low-charge bow may be out of range; keep drawing if full charge still reaches.
+        if not findShot(tool, tuning, 1) then stopAuto("Target lost or blocked"); return end
+        autoLastClear = now
+    end
+    if now - autoStarted > math.max(Config.AutoMaxHold, (tuning.drawTime or 1) + 0.5) then
+        stopAuto("Charge timed out")
+        return
+    end
+    if readyToRelease(charge, choice, tuning, weaponId) then
+        autoReleaseResult = nil
+        local ok, err = pcall(modules.Controller.Dispatch, "Primary", false)
+        if not ok then stopAuto("Release failed"); warn("[Lennon hub] Auto release: " .. tostring(err)); return end
+        if autoReleaseResult == false then autoNext = now + 0.2; return end
+        if handler.drawing then stopAuto("Release was not accepted"); return else autoOwned = nil end
+        autoNote = "Auto: released; waiting for cooldown"
+        autoNext = now + 0.1
+    else
+        autoNote = string.format("Auto: charging %d%% | %s", math.floor(charge * 100), choice and "clear shot" or "waiting for range")
+    end
+end
+
+local trajectoryParts = {}
+local function trajectoryPart()
+    return make("Part", {
+        Name = "Arc", Anchored = true, CanCollide = false, CanTouch = false, CanQuery = false,
+        CastShadow = false, Material = Enum.Material.Neon, Transparency = 1,
+        Size = Vector3.new(0.065, 0.065, 1),
+    }, visuals)
+end
+for _ = 1, 72 do table.insert(trajectoryParts, trajectoryPart()) end
+local impactMarker = make("Part", {
+    Name = "PredictedImpact", Shape = Enum.PartType.Ball, Size = Vector3.new(0.45, 0.45, 0.45),
+    Anchored = true, CanCollide = false, CanTouch = false, CanQuery = false,
+    CastShadow = false, Material = Enum.Material.Neon, Transparency = 1,
+}, visuals)
+local function hideTrajectory()
+    for _, part in ipairs(trajectoryParts) do part.Transparency = 1 end
+    impactMarker.Transparency = 1
+end
+
+local function displayTrajectory(points, blocked)
+    if not points or #points < 2 then hideTrajectory(); return end
+    local count = math.min(#trajectoryParts, #points - 1)
+    local color = blocked and Color3.fromRGB(255, 125, 83) or Color3.fromRGB(67, 220, 208)
+    for i, part in ipairs(trajectoryParts) do
+        if i <= count then
+            local a = points[math.floor((i - 1) * (#points - 1) / count) + 1]
+            local b = points[math.floor(i * (#points - 1) / count) + 1]
+            local distance = (b - a).Magnitude
+            if distance > 0.001 then
+                part.Size = Vector3.new(0.065, 0.065, distance)
+                part.CFrame = CFrame.lookAt((a + b) * 0.5, b)
+                part.Color, part.Transparency = color, 0.12
+            else part.Transparency = 1 end
+        else part.Transparency = 1 end
+    end
+    impactMarker.Position = points[#points]
+    impactMarker.Color, impactMarker.Transparency = color, 0.15
+end
+
+connect(UIS.InputBegan, function(input, processed)
+    if renderFailed or processed or UIS:GetFocusedTextBox() then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and not nativeDraw
+        and not isMenuOpen() then
+        local tool, tuning = bowInfo()
+        if tool then
+            heldFallback = true
+            drawStart, drawDuration = os.clock(), tuning.drawTime or 1
+            selected, selectionTime = nil, -math.huge
+        end
+    end
+end)
+connect(UIS.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local ok, err = true, nil
+        if not nativeDraw and heldFallback then ok, err = pcall(applyAim, nil, true) end
+        heldFallback = false
+        if not nativeDraw then selected = nil end
+        if not ok then warn("[Lennon hub] Estimated release adjustment failed: " .. tostring(err)) end
+    end
+end)
+connect(UIS.WindowFocusReleased, function()
+    windowFocused = false
+    stopAuto("Paused: window unfocused")
+    drawing, heldFallback, selected = false, false, nil
+end)
+connect(UIS.WindowFocused, function() windowFocused = true end)
+connect(player.CharacterAdded, function()
+    stopAuto("Respawned")
+    autoHandler = nil
+    drawing, heldFallback, selected, lastTool = false, false, nil, nil
+    selectionTime = -math.huge
+end)
+
+mathTests = function()
+    local zero = Vector3.zero
+    local function test(name, target, velocity, speed, gravity, lifetime, expected)
+        local roots = intercepts(zero, target, velocity, speed, gravity, lifetime)
+        assert(#roots == #expected, name .. ": wrong root count " .. tostring(#roots))
+        for i, solution in ipairs(roots) do
+            assert(math.abs(solution.time - expected[i]) < 0.001, name .. ": wrong time")
+            local endpoint = solution.direction * speed * solution.time + gravity * (0.5 * solution.time ^ 2)
+            assert((endpoint - target - velocity * solution.time).Magnitude < 0.01, name .. ": endpoint miss")
+        end
+    end
+    test("linear", Vector3.new(100, 0, 0), Vector3.new(10, 0, 0), 50, zero, 10, {2.5})
+    test("outrunning", Vector3.new(100, 0, 0), Vector3.new(60, 0, 0), 50, zero, 10, {})
+    test("two arcs", Vector3.new(100, 0, 0), zero, 50, Vector3.new(0, -10, 0), 12, {2.0430964, 9.7890631})
+    test("tangent", Vector3.new(250, 0, 0), zero, 50, Vector3.new(0, -10, 0), 12, {7.0710678})
+    test("unreachable", Vector3.new(251, 0, 0), zero, 50, Vector3.new(0, -10, 0), 12, {})
+    test("lifetime", Vector3.new(100, 0, 0), zero, 50, Vector3.new(0, -10, 0), 5, {2.0430964})
+    test("coincident", zero, zero, 50, zero, 5, {})
+    test("zero speed", Vector3.new(100, 0, 0), zero, 0, zero, 5, {})
+    print("[Lennon hub] 8 ballistic tests passed.")
+    return true
+end
+
+local nextRefresh, nextTrajectory, nextUI = 0, 0, 0
+local function render()
+    if not active or renderFailed then return end
+    local now = os.clock()
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
+    if now >= nextRefresh then refreshTargets(); nextRefresh = now + Config.TargetRefresh end
+    local tool, tuning, id = bowInfo()
+    updateAutoBow(now, tool, tuning, id)
+    local charge, isDrawing = 1, false
+    local choice, castContext
+    if tool then
+        charge, isDrawing = chargeFor(tuning)
+        if allowedToAim() then
+            castContext = exclusionContext()
+            choice = applyAim(nil, false, castContext)
+        end
+    else selected = nil end
+    if not allowedToAim() then selected = nil end
+    ring.Visible = Config.Aim and tool ~= nil and not GuiService.MenuIsOpen
+    ring.Position = UDim2.fromOffset(camera.ViewportSize.X * 0.5, camera.ViewportSize.Y * 0.5)
+    ring.Size = UDim2.fromOffset(Config.FOVRadius * 2, Config.FOVRadius * 2)
+    aimDot.Visible = false
+    if choice then
+        local point, visible = camera:WorldToViewportPoint(choice.solution.impact)
+        if visible then aimDot.Position = UDim2.fromOffset(point.X, point.Y); aimDot.Visible = true end
+    end
+    if now >= nextTrajectory then
+        nextTrajectory = now + (isDrawing and Config.TrajectoryInterval or Config.IdleTrajectoryInterval)
+        if tool and Config.Trajectory then
+            castContext = castContext or exclusionContext()
+            local params = exclusions(nil, castContext)
+            local origin = shotOrigin(tool, params)
+            local direction = choice and Config.SilentAim and choice.solution.direction or (origin and shotDirection(origin, params))
+            if direction then
+                local speed, gravity, radius = parameters(tuning, charge)
+                local duration = choice and choice.solution.time or Config.MaxLifetime
+                local points, hit, exhausted = trace(origin, direction, speed, gravity, duration, params, radius, true)
+                displayTrajectory(points, hit ~= nil or exhausted)
+            else hideTrajectory() end
+        else hideTrajectory() end
+    end
+    if now >= nextUI then
+        nextUI = now + 0.1
+        UI.SyncControls()
+        UI.Status("Auto", autoNote)
+        UI.Status("Adapter", (nativeDraw and "Charge: native" or "Charge: estimated") .. (modules.Util and " | Origin: native" or " | Origin: fallback"))
+        for _, record in pairs(records) do
+            local alive = record.root.Parent and isEnemy(record.model, record.owner)
+            local distance = alive and (record.root.Position - camera.CFrame.Position).Magnitude or math.huge
+            local enabled = Config.ESP and alive and distance <= Config.MaxDistance
+            record.highlight.Enabled = enabled
+            record.billboard.MaxDistance = Config.MaxDistance
+            record.billboard.Enabled = enabled and Config.Names
+            record.highlight.OutlineColor = choice and choice.record == record
+                and Color3.fromRGB(255, 219, 103) or Color3.fromRGB(255, 146, 127)
+            if enabled then
+                record.label.Text = string.format("%s | %d HP | %d st",
+                    record.owner and record.owner.DisplayName or record.model.Name,
+                    math.max(0, math.floor(record.humanoid.Health)), math.floor(distance))
+            end
+        end
+        UI.Status("Weapon", tool and string.format("%s | %d%% %s", id, math.floor(charge * 100),
+            isDrawing and (nativeDraw and "draw" or "estimated") or "preview") or "Equip Wood Bow or Headhunter")
+        UI.Status("Target", choice and string.format("%s | %.2fs flight", choice.record.model.Name, choice.solution.time)
+            or (allowedToAim() and "No clear, reachable target in FOV" or "Enable AIM, then draw your bow"))
+    end
+end
+
+if Config.RunMathTests then
+    local ok, err = pcall(mathTests)
+    if not ok then unload(); error(err) end
+end
+RunService:BindToRenderStep(binding, Enum.RenderPriority.Camera.Value + 3, function()
+    local ok, err = pcall(render)
+    if not ok then
+        -- Keep the menu and its key binding alive so a failed feature cannot erase the UI.
+        renderFailed = true
+        stopAuto("Stopped after error")
+        RunService:UnbindFromRenderStep(binding)
+        drawing, heldFallback, selected = false, false, nil
+        ring.Visible, aimDot.Visible = false, false
+        hideTrajectory()
+        for _, record in pairs(records) do
+            record.highlight.Enabled = false
+            record.billboard.Enabled = false
+        end
+        UI.SyncControls()
+        UI.Status("Error", "Features stopped; rerun script. " .. tostring(err):sub(1, 160))
+        UI.Notify("Features stopped: " .. tostring(err):sub(1, 160), "error")
+        setMenuVisible(true)
+        warn("[Lennon hub] Features stopped after runtime error (menu stays available): " .. tostring(err))
+    end
+end)
+print("[Lennon hub] Loaded. Insert: menu. AIM and AUTO BOW start OFF. Use Silent Aim or camera aim; hide the menu for Auto Bow. Use Unload in Main or Settings to stop the script.")
+return {Settings = Config, Unload = unload, RunMathTests = mathTests}
