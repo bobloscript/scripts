@@ -1,0 +1,1302 @@
+--[[
+	Chess Duels - Robscript Team
+	Version 1.0 | Auto play and best move arrows
+
+	How it works: the game ships a complete chess engine in
+	ReplicatedStorage.Chess (Engine holds the position and the move
+	generator, Bot runs the negamax search) and sends the live position to
+	the client as an Engine-serialised table on the ChessRemotes.Update
+	remote. This script deserialises that same snapshot, runs the game's own
+	search on a clone of it, and then either paints the result over the board
+	or plays it through ChessRemotes.Action with the exact payload the game's
+	own board view sends: "move", { from, to, promo }.
+
+	The server stays the only authority. Nothing here writes game state, no
+	move is invented: every move comes out of the game's own legal move
+	generator and is re-checked against fresh legal moves right before it is
+	sent.
+]]
+
+local VERSION = "1.0"
+local HUB_NAME = "Chess Duels"
+local CONFIG_FOLDER = "RobScriptChessDuels"
+
+--------------------------------------------------------------------------------
+-- Services
+--------------------------------------------------------------------------------
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local lastError = nil
+
+local function reportError(where, err)
+	lastError = tostring(where) .. ": " .. tostring(err)
+	warn("[Chess Duels] " .. lastError)
+end
+
+--------------------------------------------------------------------------------
+-- Game API
+--------------------------------------------------------------------------------
+
+local chessFolder = ReplicatedStorage:WaitForChild("Chess", 20)
+if not chessFolder then
+	error("[Chess Duels] ReplicatedStorage.Chess is missing - this script only runs inside Chess Duels")
+end
+
+local Engine = require(chessFolder:WaitForChild("Engine"))
+local Bot = require(chessFolder:WaitForChild("Bot"))
+
+local remotes = ReplicatedStorage:WaitForChild("ChessRemotes", 20)
+if not remotes then
+	error("[Chess Duels] ReplicatedStorage.ChessRemotes is missing")
+end
+
+local Update = remotes:WaitForChild("Update")
+local Action = remotes:WaitForChild("Action")
+
+-- The engine module is shared, so every call that touches a position goes
+-- through this lock. Two searches running at once return empty results and
+-- corrupt the module's scratch buffer. The guarded bodies never yield, and a
+-- lock older than a few seconds is treated as abandoned so a single failure
+-- cannot freeze the whole script.
+local engineLock = { held = false, since = 0 }
+local ENGINE_LOCK_TIMEOUT = 5
+
+local function withEngine(body)
+	while engineLock.held do
+		if os.clock() - engineLock.since > ENGINE_LOCK_TIMEOUT then
+			engineLock.held = false
+			break
+		end
+		task.wait(0.01)
+	end
+	engineLock.held = true
+	engineLock.since = os.clock()
+	local ok, first, second = pcall(body)
+	engineLock.held = false
+	if not ok then
+		error(first, 0)
+	end
+	return first, second
+end
+
+--------------------------------------------------------------------------------
+-- Airflow UI
+--------------------------------------------------------------------------------
+
+local UI_SOURCES = {
+	"https://raw.githubusercontent.com/bobloscript/Robly_Airflow/main/Source.luau",
+	"https://raw.githubusercontent.com/PookiePepelsss/Airflow-UI/refs/heads/main/Source.luau",
+}
+
+local Airflow
+for _, url in ipairs(UI_SOURCES) do
+	local ok, library = pcall(function()
+		return loadstring(game:HttpGet(url))()
+	end)
+	if ok and type(library) == "table" and type(library.CreateWindow) == "function" then
+		Airflow = library
+		break
+	end
+end
+
+if not Airflow then
+	error("[Chess Duels] Airflow UI could not be loaded")
+end
+
+local THEME = {
+	Background = Color3.fromHex("#0A0A0C"),
+	Surface = Color3.fromHex("#141418"),
+	Surface2 = Color3.fromHex("#1A1A20"),
+	Surface3 = Color3.fromHex("#2A2A33"),
+	Stroke = Color3.fromHex("#26262E"),
+	StrokeHover = Color3.fromHex("#3C3C49"),
+	Accent = Color3.fromHex("#FF3B7F"),
+	AccentDark = Color3.fromHex("#1A0710"),
+	Text = Color3.fromHex("#F5F5F7"),
+	Muted = Color3.fromHex("#8D8D99"),
+}
+
+Airflow.ThemePresets.Robscript = THEME
+Airflow:SetDefaultTheme(THEME)
+
+-- Reinjection: shut the previous copy down first, otherwise two instances would
+-- both listen to Update and both paint arrows.
+local previousInstance = getgenv and getgenv().ChessDuels
+if previousInstance and type(previousInstance.Destroy) == "function" then
+	pcall(previousInstance.Destroy)
+end
+
+local Window = Airflow:CreateWindow({
+	Name = HUB_NAME,
+	LoadingSubtitle = "autoplay, best move arrows",
+	ToggleUIKeybind = "RightControl",
+	Size = UDim2.fromOffset(780, 540),
+	Backdrop = { Weather = "Fireflies", Tint = 0.35 },
+	Theme = THEME,
+	ConfigurationSaving = { Enabled = true, FolderName = CONFIG_FOLDER },
+	Home = {
+		Title = HUB_NAME,
+		Welcome = "Welcome back,",
+		Tier = "v" .. VERSION,
+		Stats = { "Players", "Session", "FPS", "Ping", "Game", "Executor" },
+	},
+})
+
+--------------------------------------------------------------------------------
+-- Settings
+--------------------------------------------------------------------------------
+
+local Settings = {
+	autoPlay = false,
+	showBest = true,
+	showTop = false,
+	showBadge = true,
+	depth = 4,
+	delay = 0.4,
+	thickness = 12,
+	opacity = 0.12,
+	botLevel = Bot.DEFAULT or "easy",
+}
+
+local ARROW_COLOR = Color3.fromHex("#FF3B7F")
+local SECOND_COLOR = Color3.fromHex("#FFB23B")
+local THIRD_COLOR = Color3.fromHex("#6EA8FF")
+local MATE_SCORE = 100000
+local DEBUG_OVERLAY = false
+
+--------------------------------------------------------------------------------
+-- Board geometry
+--
+-- The board is a 2D frame tree: ChessUI.Screen.Root.Board holds 64 "Cell"
+-- frames laid out row major at square/8, plus the Pieces and Arrows layers.
+-- BoardView maps a square to a cell with the same formula used below, and the
+-- orientation is read from the game's own rank labels ("8" sits on the top
+-- row when White is at the bottom).
+--------------------------------------------------------------------------------
+
+local Geometry = {}
+
+function Geometry.findBoard()
+	local ui = PlayerGui:FindFirstChild("ChessUI")
+	if not ui then
+		return nil
+	end
+	local screen = ui:FindFirstChild("Screen")
+	if not screen then
+		return nil
+	end
+	local root = screen:FindFirstChild("Root")
+	if not root then
+		return nil
+	end
+	return root:FindFirstChild("Board")
+end
+
+function Geometry.isFlipped(board)
+	local squares = board:FindFirstChild("Squares")
+	if not squares then
+		return false
+	end
+	local cellSize = board.AbsoluteSize.Y / 8
+	if cellSize <= 1 then
+		return false
+	end
+	for _, cell in ipairs(squares:GetChildren()) do
+		if cell:IsA("GuiObject") then
+			local label = cell:FindFirstChild("Rank")
+			if label and label:IsA("TextLabel") and label.Text == "8" then
+				local row = (cell.AbsolutePosition.Y - board.AbsolutePosition.Y) / cellSize
+				return row > 3.5
+			end
+		end
+	end
+	return false
+end
+
+function Geometry.cellIndex(square, flipped)
+	local file = (square - 1) % 8
+	local rank = (square - 1) // 8
+	if flipped then
+		return rank * 8 + (7 - file) + 1
+	end
+	return (7 - rank) * 8 + file + 1
+end
+
+function Geometry.centre(board, square, flipped)
+	local index = Geometry.cellIndex(square, flipped)
+	local cell = board.AbsoluteSize.X / 8
+	local column = (index - 1) % 8
+	local row = (index - 1) // 8
+	return Vector2.new((column + 0.5) * cell, (row + 0.5) * cell), cell
+end
+
+--------------------------------------------------------------------------------
+-- Overlay: arrows painted on top of the board
+--------------------------------------------------------------------------------
+
+local Overlay = {
+	containerName = "RobscriptBestMove",
+	pulse = {},
+}
+
+local function makeFrame(properties)
+	local frame = Instance.new("Frame")
+	frame.BorderSizePixel = 0
+	frame.BackgroundColor3 = Color3.new(1, 1, 1)
+	frame.BackgroundTransparency = 1
+	for key, value in pairs(properties) do
+		frame[key] = value
+	end
+	return frame
+end
+
+local function roundCorner(instance, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = radius
+	corner.Parent = instance
+	return corner
+end
+
+function Overlay.attach()
+	local board = Geometry.findBoard()
+	if not board then
+		return nil, nil
+	end
+	local container = board:FindFirstChild(Overlay.containerName)
+	if not container then
+		container = makeFrame({
+			Name = Overlay.containerName,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			BackgroundTransparency = 1,
+			ZIndex = 10,
+		})
+		container.Parent = board
+	end
+	return container, board
+end
+
+function Overlay.clear()
+	local container = Overlay.attach()
+	table.clear(Overlay.pulse)
+	if not container then
+		return
+	end
+	for _, child in ipairs(container:GetChildren()) do
+		child:Destroy()
+	end
+end
+
+local function rotateVector(vector, degrees)
+	local radians = math.rad(degrees)
+	local cos, sin = math.cos(radians), math.sin(radians)
+	return Vector2.new(vector.X * cos - vector.Y * sin, vector.X * sin + vector.Y * cos)
+end
+
+local function drawStroke(container, fromPoint, toPoint, thickness, color, transparency, zIndex)
+	local delta = toPoint - fromPoint
+	local length = delta.Magnitude
+	if length < 1 then
+		return nil
+	end
+	local stroke = makeFrame({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset((fromPoint.X + toPoint.X) / 2, (fromPoint.Y + toPoint.Y) / 2),
+		Size = UDim2.fromOffset(length, thickness),
+		Rotation = math.deg(math.atan2(delta.Y, delta.X)),
+		BackgroundColor3 = color,
+		BackgroundTransparency = transparency,
+		ZIndex = zIndex,
+	})
+	roundCorner(stroke, UDim.new(0.5, 0))
+	stroke.Parent = container
+	table.insert(Overlay.pulse, { object = stroke, base = transparency })
+	return stroke
+end
+
+local function drawRing(container, point, diameter, color, thickness, zIndex)
+	local ring = makeFrame({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(point.X, point.Y),
+		Size = UDim2.fromOffset(diameter, diameter),
+		ZIndex = zIndex,
+	})
+	roundCorner(ring, UDim.new(0.5, 0))
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = thickness
+	stroke.Transparency = 0.1
+	stroke.Parent = ring
+	ring.Parent = container
+	return ring
+end
+
+local function drawDot(container, point, diameter, color, transparency, zIndex)
+	local dot = makeFrame({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(point.X, point.Y),
+		Size = UDim2.fromOffset(diameter, diameter),
+		BackgroundColor3 = color,
+		BackgroundTransparency = transparency,
+		ZIndex = zIndex,
+	})
+	roundCorner(dot, UDim.new(0.5, 0))
+	dot.Parent = container
+	table.insert(Overlay.pulse, { object = dot, base = transparency })
+	return dot
+end
+
+local function drawLabel(container, point, text, color, zIndex, textSize, anchor)
+	local label = Instance.new("TextLabel")
+	label.Name = "Caption"
+	label.AnchorPoint = anchor or Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromOffset(point.X, point.Y)
+	label.AutomaticSize = Enum.AutomaticSize.XY
+	label.BackgroundColor3 = Color3.fromHex("#0A0A0C")
+	label.BackgroundTransparency = 0.15
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = textSize or 17
+	label.TextColor3 = color
+	label.Text = text
+	label.ZIndex = zIndex
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.PaddingTop = UDim.new(0, 4)
+	padding.PaddingBottom = UDim.new(0, 4)
+	padding.Parent = label
+	roundCorner(label, UDim.new(0, 7))
+	label.Parent = container
+	return label
+end
+
+local function drawArrow(container, fromPoint, toPoint, cell, options)
+	local delta = toPoint - fromPoint
+	if delta.Magnitude < cell * 0.25 then
+		return
+	end
+	local unit = delta.Unit
+	local startPoint = fromPoint + unit * (cell * 0.17)
+	local endPoint = toPoint - unit * (cell * 0.27)
+	local thickness = options.thickness
+	local zIndex = options.zIndex
+
+	drawStroke(container, startPoint, endPoint, thickness, options.color, options.transparency, zIndex)
+
+	local headLength = math.max(thickness * 2.3, cell * 0.2)
+	for _, angle in ipairs({ 27, -27 }) do
+		local headDirection = rotateVector(-unit, angle)
+		drawStroke(container, endPoint, endPoint + headDirection * headLength, thickness, options.color, options.transparency, zIndex)
+	end
+
+	drawRing(container, toPoint, cell * 0.76, options.color, math.max(2, thickness * 0.2), zIndex)
+end
+
+local function formatEvaluation(score, perspective)
+	local centipawns = score
+	if perspective == -1 then
+		centipawns = -centipawns
+	end
+	if math.abs(centipawns) > 50000 then
+		return centipawns > 0 and "mate" or "-mate"
+	end
+	return string.format("%+.2f", centipawns / 100)
+end
+
+function Overlay.render(analysis)
+	local container, board = Overlay.attach()
+	if not container or not board then
+		return
+	end
+	for _, child in ipairs(container:GetChildren()) do
+		child:Destroy()
+	end
+	table.clear(Overlay.pulse)
+
+	if DEBUG_OVERLAY then
+		print(
+			string.format(
+				"[Chess Duels] render|showBest=%s|analysis=%s|best=%s",
+				tostring(Settings.showBest),
+				tostring(analysis ~= nil),
+				tostring(analysis and analysis.best ~= nil)
+			)
+		)
+	end
+
+	if not Settings.showBest or not analysis or not analysis.best then
+		return
+	end
+
+	local flipped = Geometry.isFlipped(board)
+	local cell = board.AbsoluteSize.X / 8
+	if cell < 8 then
+		return
+	end
+
+	local best = analysis.best
+	local bestFrom = Geometry.centre(board, best.move.from, flipped)
+	local bestTo = Geometry.centre(board, best.move.to, flipped)
+
+	drawArrow(container, bestFrom, bestTo, cell, {
+		color = ARROW_COLOR,
+		thickness = Settings.thickness,
+		transparency = Settings.opacity,
+		zIndex = 12,
+	})
+	drawDot(container, bestFrom, cell * 0.34, ARROW_COLOR, 0.25, 11)
+
+	local evaluation = formatEvaluation(best.score, analysis.turn)
+	local caption = "#1 " .. tostring(best.san) .. "  " .. evaluation
+	local midpoint = (bestFrom + bestTo) / 2
+	local normal = (bestTo - bestFrom).Unit
+	normal = Vector2.new(-normal.Y, normal.X)
+	drawLabel(container, midpoint + normal * (cell * 0.55), caption, ARROW_COLOR, 14, 18)
+
+	if Settings.showTop and analysis.top then
+		local colors = { SECOND_COLOR, THIRD_COLOR }
+		for index, candidate in ipairs(analysis.top) do
+			if index > 2 then
+				break
+			end
+			if candidate.move.from ~= best.move.from or candidate.move.to ~= best.move.to then
+				local fromPoint = Geometry.centre(board, candidate.move.from, flipped)
+				local toPoint = Geometry.centre(board, candidate.move.to, flipped)
+				local color = colors[index] or THIRD_COLOR
+				drawArrow(container, fromPoint, toPoint, cell, {
+					color = color,
+					thickness = math.max(6, Settings.thickness * 0.62),
+					transparency = Settings.opacity + 0.25,
+					zIndex = 11,
+				})
+				local shift = (index == 1) and -0.8 or 0.8
+				local mid = (fromPoint + toPoint) / 2
+				local dir = (toPoint - fromPoint).Unit
+				local perp = Vector2.new(-dir.Y, dir.X)
+				drawLabel(
+					container,
+					mid + perp * (cell * shift),
+					"#" .. (index + 1) .. " " .. tostring(candidate.san) .. " " .. formatEvaluation(candidate.score, analysis.turn),
+					color,
+					13,
+					15
+				)
+			end
+		end
+	end
+
+	if Settings.showBadge then
+		local depthText = "d" .. tostring(analysis.depth)
+		local text = depthText .. "   " .. evaluation .. "   " .. tostring(best.san) .. "   " .. string.format("%d ms", math.floor(analysis.elapsed * 1000))
+		drawLabel(container, Vector2.new(cell * 0.18, cell * 0.2), text, THEME.Text, 15, 16, Vector2.new(0, 0))
+	end
+end
+
+local pulseConnection
+do
+	local clock = 0
+	pulseConnection = RunService.Heartbeat:Connect(function(delta)
+		if #Overlay.pulse == 0 then
+			return
+		end
+		clock += delta
+		local wave = 0.5 + 0.5 * math.sin(clock * 4.5)
+		for _, entry in ipairs(Overlay.pulse) do
+			if entry.object and entry.object.Parent then
+				entry.object.BackgroundTransparency = math.clamp(entry.base + wave * 0.12, 0, 1)
+			end
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Live state bridge
+--------------------------------------------------------------------------------
+
+local Bridge = {
+	payload = nil,
+	state = nil,
+	signature = "",
+}
+
+local analysisGeneration = 0
+local Analysis = {
+	current = nil,
+	busy = false,
+}
+
+local Log = nil
+local requestAnalysis = nil
+local Autoplay = nil
+
+-- The Update remote only pushes on change, so a script loaded in the middle of
+-- a game never sees the position that was sent before it started. The client
+-- keeps the current snapshot in its own view state; the cheapest way to reach
+-- it without depending on decompiled upvalue order is one pass over the heap
+-- looking for the table that carries ply/you/state/moves.
+function Bridge.pullLiveGame()
+	local ok, objects = pcall(getgc, true)
+	if not ok or type(objects) ~= "table" then
+		return nil
+	end
+	for _, object in ipairs(objects) do
+		if type(object) == "table" then
+			if
+				type(rawget(object, "ply")) == "number"
+				and type(rawget(object, "you")) == "number"
+				and type(rawget(object, "state")) == "table"
+				and type(rawget(object, "moves")) == "table"
+				and rawget(object, "id") ~= nil
+			then
+				return object
+			end
+		end
+	end
+	return nil
+end
+
+function Bridge.onPayload(payload)
+	if type(payload) ~= "table" then
+		return
+	end
+	if payload.kind ~= nil and payload.kind ~= "game" then
+		return
+	end
+	if payload.state == nil then
+		return
+	end
+
+	local previousId = Bridge.payload and Bridge.payload.id
+	Bridge.payload = payload
+
+	if payload.state ~= nil then
+		local ok, state = pcall(function()
+			return withEngine(function()
+				return Engine.deserialize(payload.state)
+			end)
+		end)
+		if ok and type(state) == "table" and type(state.board) == "table" then
+			Bridge.state = state
+		end
+	end
+
+	Bridge.signature = tostring(payload.id) .. ":" .. tostring(payload.ply)
+
+	-- Arrows are replaced by the render that follows, not wiped here: a search
+	-- takes a few hundred milliseconds and blanking the board on every ply
+	-- makes the hint flicker. Only a finished game or a new game id clears.
+	if payload.over ~= nil or (previousId ~= nil and payload.id ~= previousId) then
+		Overlay.clear()
+	end
+
+	if requestAnalysis then
+		requestAnalysis("position")
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Search
+--------------------------------------------------------------------------------
+
+local Search = {}
+
+function Search.rank(state, legal, depth)
+	local shallow = math.clamp(depth - 2, 2, 4)
+	local scored = {}
+	local reference = Engine.clone(state)
+
+	for _, move in ipairs(legal) do
+		local child = Engine.clone(state)
+		local ok, childScore = pcall(Bot.analyze, child, shallow, 1)
+		if ok and type(childScore) == "number" then
+			table.insert(scored, {
+				move = move,
+				score = -childScore,
+				san = Engine.san(reference, move, legal),
+			})
+		end
+	end
+
+	table.sort(scored, function(a, b)
+		return a.score > b.score
+	end)
+
+	local trimmed = {}
+	for index = 1, math.min(#scored, 3) do
+		trimmed[index] = scored[index]
+	end
+	return trimmed
+end
+
+function Search.analyse(state, depth, withRanking)
+	local root = Engine.clone(state)
+	local legal = Engine.legalMoves(root)
+	if #legal == 0 then
+		return nil
+	end
+
+	local startedAt = os.clock()
+	local ok, score, move = pcall(Bot.analyze, root, depth, 1)
+	local elapsed = os.clock() - startedAt
+
+	if not ok then
+		reportError("search", score)
+		return nil
+	end
+	if type(move) ~= "table" then
+		return nil
+	end
+
+	local result = {
+		best = {
+			move = move,
+			score = score,
+			san = Engine.san(Engine.clone(state), move, legal),
+		},
+		turn = state.turn,
+		depth = depth,
+		elapsed = elapsed,
+		top = {},
+	}
+
+	if withRanking then
+		local rankStartedAt = os.clock()
+		result.top = Search.rank(Engine.clone(state), legal, depth)
+		result.rankTime = os.clock() - rankStartedAt
+	end
+
+	return result
+end
+
+-- The engine module keeps scratch state, so two searches must never overlap:
+-- running them in parallel returns empty results and blanks the arrows. One
+-- worker drains a single slot, and a newer request simply replaces the queued
+-- one, which also keeps the CPU on the newest position.
+local pendingAnalysis = nil
+
+task.spawn(function()
+	while true do
+		task.wait(0.05)
+		local request = pendingAnalysis
+		if request then
+			pendingAnalysis = nil
+			Analysis.busy = true
+
+			-- The game's own board view also borrows Engine while it repaints,
+			-- so a search occasionally comes back empty. One retry on the same
+			-- position is enough, and only while it is still the newest one.
+			local result = nil
+			for attempt = 1, 2 do
+				local ok, outcome = pcall(function()
+					return withEngine(function()
+						return Search.analyse(request.state, request.depth, request.withRanking)
+					end)
+				end)
+				if not ok then
+					reportError("search", outcome)
+					outcome = nil
+				end
+				if outcome then
+					result = outcome
+					break
+				end
+				if attempt == 1 and request.generation == analysisGeneration then
+					task.wait(0.06)
+				end
+			end
+
+			Analysis.busy = false
+			if request.generation == analysisGeneration and result then
+				result.signature = request.signature
+				Analysis.current = result
+				local drawn, drawError = pcall(Overlay.render, result)
+				if not drawn then
+					reportError("overlay", drawError)
+				end
+				if Autoplay then
+					Autoplay.onAnalysis(result)
+				end
+			end
+		end
+	end
+end)
+
+requestAnalysis = function(reason)
+	local state = Bridge.state
+	if not state then
+		return
+	end
+	analysisGeneration += 1
+	pendingAnalysis = {
+		generation = analysisGeneration,
+		state = state,
+		signature = Bridge.signature,
+		depth = math.floor(Settings.depth),
+		withRanking = Settings.showTop,
+	}
+end
+
+--------------------------------------------------------------------------------
+-- Auto play
+--
+-- The move is sent with the same payload the game's board view uses, and only
+-- after a fresh look at the legal moves of the current position, so a stale
+-- search result can never become an illegal request.
+--------------------------------------------------------------------------------
+
+Autoplay = {
+	lastFiredSignature = nil,
+	firedAt = 0,
+	retryAfter = 4,
+}
+
+function Autoplay.eligible()
+	local payload = Bridge.payload
+	local state = Bridge.state
+	if not payload or not state then
+		return false, "no game"
+	end
+	if payload.past then
+		return false, "history"
+	end
+	if payload.over then
+		return false, "game over"
+	end
+	if payload.you == nil or payload.you == 0 then
+		return false, "watching"
+	end
+	if state.turn ~= payload.you then
+		return false, "waiting for the opponent"
+	end
+	return true, "your turn"
+end
+
+function Autoplay.play(result)
+	if not result or not result.best then
+		return
+	end
+	local move = result.best.move
+	local signature = Bridge.signature
+
+	local found
+	withEngine(function()
+		local legal = Engine.legalMoves(Engine.clone(Bridge.state))
+		found = Engine.findMove(legal, move.from, move.to, move.promo ~= 0 and move.promo or nil)
+	end)
+	if not found then
+		if Log then
+			Log:Push("Move is no longer legal, skipping", "Warning")
+		end
+		return
+	end
+
+	Autoplay.lastFiredSignature = signature
+	Autoplay.firedAt = os.clock()
+	Action:FireServer("move", { from = found.from, to = found.to, promo = found.promo })
+	print("[Chess Duels] played " .. tostring(result.best.san) .. " at " .. tostring(signature))
+	if Log then
+		Log:Push(
+			"Played <Accent>" .. tostring(result.best.san) .. "</Accent> in " .. string.format("%.2fs", result.elapsed),
+			"Text"
+		)
+	end
+end
+
+function Autoplay.onAnalysis(result)
+	if not Settings.autoPlay or not result or not result.best then
+		return
+	end
+	if result.signature ~= nil and result.signature ~= Bridge.signature then
+		return
+	end
+	local eligible = Autoplay.eligible()
+	if not eligible then
+		return
+	end
+	local signature = Bridge.signature
+	if Autoplay.lastFiredSignature == signature then
+		return
+	end
+
+	task.spawn(function()
+		if Settings.delay > 0 then
+			task.wait(Settings.delay)
+		end
+		if not Settings.autoPlay then
+			return
+		end
+		if signature ~= Bridge.signature then
+			return
+		end
+		if not Autoplay.eligible() then
+			return
+		end
+		Autoplay.play(result)
+	end)
+end
+
+local watchdogThread = task.spawn(function()
+	while true do
+		task.wait(1.2)
+		if Settings.autoPlay then
+			local eligible = Autoplay.eligible()
+			if not eligible then
+				Autoplay.lastFiredSignature = nil
+			elseif Autoplay.lastFiredSignature == Bridge.signature then
+				if os.clock() - Autoplay.firedAt > Autoplay.retryAfter then
+					Autoplay.lastFiredSignature = nil
+				end
+			elseif not Analysis.busy then
+				requestAnalysis("watchdog")
+			end
+		end
+	end
+end)
+
+local updateConnection = Update.OnClientEvent:Connect(function(payload)
+	local ok, err = pcall(Bridge.onPayload, payload)
+	if not ok then
+		reportError("update", err)
+	end
+end)
+
+-- Catch up with a game that was already running when the script was injected.
+task.spawn(function()
+	for _ = 1, 20 do
+		if Bridge.payload ~= nil then
+			return
+		end
+		local payload = Bridge.pullLiveGame()
+		if payload then
+			local ok, err = pcall(Bridge.onPayload, payload)
+			if ok then
+				print("[Chess Duels] picked up the running game at " .. tostring(Bridge.signature))
+				return
+			end
+			reportError("bootstrap", err)
+		end
+		task.wait(2)
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- User interface
+--------------------------------------------------------------------------------
+
+local PlayTab = Window:CreateTab({ Name = "Play", Icon = "swords" })
+local PlayLeft = PlayTab:CreateGroupbox({ Name = "Autoplay", Side = "Left" })
+local PlayRight = PlayTab:CreateGroupbox({ Name = "Board", Side = "Right" })
+
+local AnalysisTab = Window:CreateTab({ Name = "Analysis", Icon = "cpu" })
+local AnalysisLeft = AnalysisTab:CreateGroupbox({ Name = "Position", Side = "Left" })
+local AnalysisRight = AnalysisTab:CreateGroupbox({ Name = "Candidates", Side = "Right" })
+
+local LogTab = Window:CreateTab({ Name = "Log", Icon = "scroll-text" })
+local LogBox = LogTab:CreateGroupbox({ Name = "Activity", Side = "Left" })
+
+Log = LogBox:CreateLog({
+	Name = "Activity",
+	MaxEntries = 300,
+	MaxRows = 16,
+	Timestamps = true,
+	EmptyText = "Nothing yet",
+})
+
+local AutoPlayToggle = PlayLeft:CreateToggle({
+	Name = "Auto play",
+	Desc = "Plays the engine move for you on your turn",
+	Flag = "ChessAutoPlay",
+	CurrentValue = false,
+	Callback = function(value)
+		Settings.autoPlay = value
+		Log:Push(value and "<Success>Auto play enabled</Success>" or "<Muted>Auto play disabled</Muted>", "Text")
+		if value then
+			requestAnalysis("auto play")
+		end
+	end,
+})
+
+PlayLeft:CreateToggle({
+	Name = "Show best move",
+	Desc = "Paints the best move on the board",
+	Flag = "ChessShowBest",
+	CurrentValue = true,
+	Callback = function(value)
+		Settings.showBest = value
+		Overlay.render(Analysis.current)
+	end,
+})
+
+PlayLeft:CreateToggle({
+	Name = "Show top three",
+	Desc = "Adds the next two candidate moves",
+	Flag = "ChessShowTop",
+	CurrentValue = false,
+	Callback = function(value)
+		Settings.showTop = value
+		requestAnalysis("top moves")
+	end,
+})
+
+PlayLeft:CreateSlider({
+	Name = "Search depth",
+	Desc = "Ply depth of the built in search",
+	Range = { 2, 6 },
+	Increment = 1,
+	Suffix = " ply",
+	CurrentValue = 4,
+	Flag = "ChessDepth",
+	Callback = function(value)
+		Settings.depth = value
+		requestAnalysis("depth")
+	end,
+})
+
+PlayLeft:CreateSlider({
+	Name = "Move delay",
+	Desc = "Pause before the move is sent",
+	Range = { 0, 3 },
+	Increment = 0.1,
+	Suffix = " s",
+	CurrentValue = 0.4,
+	Flag = "ChessDelay",
+	Callback = function(value)
+		Settings.delay = value
+	end,
+})
+
+PlayRight:CreateToggle({
+	Name = "Eval badge",
+	Desc = "Depth, evaluation and best move above the board",
+	Flag = "ChessBadge",
+	CurrentValue = true,
+	Callback = function(value)
+		Settings.showBadge = value
+		Overlay.render(Analysis.current)
+	end,
+})
+
+PlayRight:CreateSlider({
+	Name = "Arrow thickness",
+	Range = { 6, 24 },
+	Increment = 1,
+	Suffix = " px",
+	CurrentValue = 12,
+	Flag = "ChessThickness",
+	Callback = function(value)
+		Settings.thickness = value
+		Overlay.render(Analysis.current)
+	end,
+})
+
+PlayRight:CreateSlider({
+	Name = "Arrow fade",
+	Desc = "Higher fades the arrow into the board",
+	Range = { 0, 60 },
+	Increment = 5,
+	Suffix = "%",
+	CurrentValue = 12,
+	Flag = "ChessOpacity",
+	Callback = function(value)
+		Settings.opacity = value / 100
+		Overlay.render(Analysis.current)
+	end,
+})
+
+local levelKeys = {}
+for key in pairs(Bot.LEVELS) do
+	table.insert(levelKeys, key)
+end
+table.sort(levelKeys, function(a, b)
+	local left = Bot.LEVELS[a]
+	local right = Bot.LEVELS[b]
+	return (left and left.elo or 0) < (right and right.elo or 0)
+end)
+
+PlayRight:CreateDropdown({
+	Name = "Computer level",
+	Options = levelKeys,
+	CurrentOption = Settings.botLevel,
+	Flag = "ChessBotLevel",
+	Callback = function(value)
+		Settings.botLevel = value
+	end,
+})
+
+PlayRight:CreateButton({
+	Name = "Start game vs computer",
+	Desc = "Sends the same playBot action the home screen sends",
+	Icon = "bot",
+	Callback = function()
+		Action:FireServer("playBot", { level = Settings.botLevel, tc = "rapid", color = 0 })
+		Log:Push("Starting a game against <Accent>" .. tostring(Settings.botLevel) .. "</Accent>", "Text")
+	end,
+})
+
+PlayRight:CreateKeybind({
+	Name = "Auto play key",
+	CurrentKeybind = "G",
+	Flag = "ChessKeyAuto",
+	Callback = function()
+		AutoPlayToggle:Set(not AutoPlayToggle.Value)
+	end,
+})
+
+AnalysisLeft:CreateStatus({
+	Name = "Turn",
+	Style = "Row",
+	UpdateRate = 0.3,
+	Update = function()
+		local payload = Bridge.payload
+		local state = Bridge.state
+		if not payload or not state then
+			return "<Muted>no game</Muted>"
+		end
+		if payload.over then
+			return "<Error>game over</Error>"
+		end
+		local side = state.turn == 1 and "White" or "Black"
+		local mine = payload.you == state.turn
+		return side .. (mine and " <Success>(you)</Success>" or "")
+	end,
+})
+
+AnalysisLeft:CreateStatus({
+	Name = "Best move",
+	Style = "Row",
+	UpdateRate = 0.3,
+	Update = function()
+		local result = Analysis.current
+		if not result or not result.best then
+			return "<Muted>-</Muted>"
+		end
+		return "<Accent>" .. tostring(result.best.san) .. "</Accent>"
+	end,
+})
+
+AnalysisLeft:CreateStatus({
+	Name = "Evaluation",
+	Style = "Row",
+	UpdateRate = 0.3,
+	Update = function()
+		local result = Analysis.current
+		if not result or not result.best then
+			return "<Muted>-</Muted>"
+		end
+		return formatEvaluation(result.best.score, result.turn)
+	end,
+})
+
+AnalysisLeft:CreateStatus({
+	Name = "Depth",
+	Style = "Row",
+	UpdateRate = 0.3,
+	Update = function()
+		local result = Analysis.current
+		if Analysis.busy then
+			return "<Accent>searching</Accent>"
+		end
+		if not result then
+			return "<Muted>-</Muted>"
+		end
+		return "d" .. tostring(result.depth)
+	end,
+})
+
+AnalysisLeft:CreateStatus({
+	Name = "Search time",
+	Style = "Row",
+	UpdateRate = 0.3,
+	Update = function()
+		local result = Analysis.current
+		if not result then
+			return "<Muted>-</Muted>"
+		end
+		return string.format("%d ms", math.floor(result.elapsed * 1000))
+	end,
+})
+
+AnalysisLeft:CreateDivider()
+
+AnalysisLeft:CreateButton({
+	Name = "Analyze now",
+	Icon = "search",
+	Callback = function()
+		requestAnalysis("manual")
+		Log:Push("Manual analysis requested", "Text")
+	end,
+})
+
+AnalysisLeft:CreateButton({
+	Name = "Copy FEN",
+	Icon = "clipboard-copy",
+	Callback = function()
+		local state = Bridge.state
+		if not state then
+			Log:Push("No position to copy", "Warning")
+			return
+		end
+		local fen = Engine.toFEN(state)
+		if setclipboard then
+			setclipboard(fen)
+			Log:Push("FEN copied: " .. fen, "Text")
+		else
+			Log:Push("FEN: " .. fen, "Text")
+		end
+	end,
+})
+
+local CandidateLog = AnalysisRight:CreateLog({
+	Name = "Ranked moves",
+	MaxEntries = 3,
+	MaxRows = 3,
+	Timestamps = false,
+	EmptyText = "Enable Show top three",
+})
+
+local function pushCandidates(result)
+	CandidateLog:Clear()
+	if not result or not result.top then
+		return
+	end
+	for index, candidate in ipairs(result.top) do
+		local tag = index == 1 and "Success" or "Muted"
+		CandidateLog:Push(
+			"<" .. tag .. ">#" .. index .. " " .. tostring(candidate.san) .. "</" .. tag .. ">  " .. formatEvaluation(candidate.score, result.turn),
+			"Text"
+		)
+	end
+end
+
+local candidatesThread = task.spawn(function()
+	local previousSignature = nil
+	while true do
+		task.wait(0.4)
+		if Bridge.signature ~= previousSignature then
+			previousSignature = Bridge.signature
+			CandidateLog:Clear()
+		end
+		if not Analysis.busy then
+			pushCandidates(Analysis.current)
+		end
+	end
+end)
+
+local SettingsTab = Window:CreateTab({ Name = "Settings", Icon = "settings" })
+SettingsTab:CreateConfigManager({ Name = "Configs", Side = "Left" })
+SettingsTab:CreateThemeManager({ Name = "Theme", Side = "Right" })
+
+Window:LoadAutoload()
+
+-- Element callbacks fire while the window is being built, sometimes with nil,
+-- so the runtime settings are read back from the saved flags once the whole
+-- tree exists. This keeps the first render honest.
+local function syncSettingsFromFlags()
+	local flags = Airflow.Flags or {}
+
+	local function readNumber(flag, fallback)
+		local handle = flags[flag]
+		if not handle then
+			return fallback
+		end
+		local ok, value = pcall(function()
+			return handle:Get()
+		end)
+		if ok and type(value) == "number" then
+			return value
+		end
+		return fallback
+	end
+
+	local function readBoolean(flag, fallback)
+		local handle = flags[flag]
+		if not handle then
+			return fallback
+		end
+		local ok, value = pcall(function()
+			return handle:Get()
+		end)
+		if ok and type(value) == "boolean" then
+			return value
+		end
+		return fallback
+	end
+
+	Settings.autoPlay = readBoolean("ChessAutoPlay", Settings.autoPlay)
+	Settings.showBest = readBoolean("ChessShowBest", Settings.showBest)
+	Settings.showTop = readBoolean("ChessShowTop", Settings.showTop)
+	Settings.showBadge = readBoolean("ChessBadge", Settings.showBadge)
+	Settings.depth = readNumber("ChessDepth", Settings.depth)
+	Settings.delay = readNumber("ChessDelay", Settings.delay)
+	Settings.thickness = readNumber("ChessThickness", Settings.thickness)
+	Settings.opacity = readNumber("ChessOpacity", Settings.opacity * 100) / 100
+
+	local levelHandle = flags.ChessBotLevel
+	if levelHandle then
+		local ok, value = pcall(function()
+			return levelHandle:Get()
+		end)
+		if ok and type(value) == "string" then
+			Settings.botLevel = value
+		end
+	end
+end
+
+syncSettingsFromFlags()
+
+-- Small handle for the console and for other scripts: read the live state,
+-- force one search, or flip auto play without touching the window.
+if getgenv then
+	getgenv().ChessDuels = {
+		Version = VERSION,
+		Settings = Settings,
+		Bridge = Bridge,
+		Analysis = Analysis,
+		Autoplay = Autoplay,
+		Overlay = Overlay,
+		Geometry = Geometry,
+		EngineLock = engineLock,
+		Analyse = requestAnalysis,
+		SyncSettings = syncSettingsFromFlags,
+		SetAutoPlay = function(value)
+			Settings.autoPlay = value and true or false
+			AutoPlayToggle:Set(Settings.autoPlay, true)
+			if Settings.autoPlay then
+				requestAnalysis("api")
+			end
+		end,
+		Destroy = function()
+			if updateConnection then
+				updateConnection:Disconnect()
+			end
+			if pulseConnection then
+				pulseConnection:Disconnect()
+			end
+			if watchdogThread then
+				task.cancel(watchdogThread)
+			end
+			if candidatesThread then
+				task.cancel(candidatesThread)
+			end
+			pcall(Overlay.clear)
+			pcall(function()
+				Window:Destroy()
+			end)
+			if getgenv then
+				getgenv().ChessDuels = nil
+			end
+		end,
+	}
+end
+
+Log:Push("Loaded <Accent>Chess Duels</Accent> v" .. VERSION, "Success")
+Window:Notify({ Title = "Chess Duels", Content = "Auto play and best move arrows are ready", Type = "Success" })
+print("[Chess Duels] v" .. VERSION .. " loaded")
