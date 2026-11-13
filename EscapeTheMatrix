@@ -1,5 +1,4 @@
--- Robscript Team - Escape The Matrix - auto gigs only
--- One switch: finds a gig in HustleHub, solves it and submits the work.
+-- Robscript Team - Escape The Matrix
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -28,23 +27,12 @@ if not okFormat then
     Format = nil
 end
 
-local UI_SOURCES = {
-    "https://raw.githubusercontent.com/bobloscript/Robly_Airflow/main/Source.luau",
-    "https://raw.githubusercontent.com/PookiePepelsss/Airflow-UI/refs/heads/main/Source.luau",
-}
-
-local Airflow
-for _, url in ipairs(UI_SOURCES) do
-    local ok, library = pcall(function()
-        return loadstring(game:HttpGet(url))()
-    end)
-    if ok and type(library) == "table" and type(library.CreateWindow) == "function" then
-        Airflow = library
-        break
-    end
-end
-if not Airflow then
-    return warn("[Robscript ETM] Airflow UI could not be loaded")
+local uiSource = "https://raw.githubusercontent.com/bobloscript/Robly_Airflow/main/Source.luau"
+local okUI, Airflow = pcall(function()
+    return loadstring(game:HttpGet(uiSource))()
+end)
+if not okUI or type(Airflow) ~= "table" or type(Airflow.CreateWindow) ~= "function" then
+    return warn("[Robscript ETM] Robly Airflow could not be loaded")
 end
 
 local THEME = {
@@ -62,6 +50,220 @@ local THEME = {
 
 Airflow.ThemePresets.Robscript = THEME
 Airflow:SetDefaultTheme(THEME)
+
+Airflow:AddLanguage("en", {
+    Name = "English",
+    Flag = "https://flagcdn.com/w40/gb.png",
+})
+Airflow:AddLanguage("ru", {
+    Name = "Русский",
+    Flag = "ru",
+    Strings = {
+        ["Work"] = "Работа",
+        ["Growth"] = "Продвижение",
+        ["Trade"] = "Торговля",
+        ["Activity"] = "Журнал действий",
+        ["Gig activity"] = "История гигов",
+        ["Ranked combos"] = "Рейтинг комбинаций",
+        ["Trade activity"] = "История сделок",
+        ["Market activity"] = "Действия на рынке",
+        ["Trade limits"] = "Лимиты сделок",
+        ["Order activity"] = "История ордеров",
+        ["Status"] = "Статус",
+        ["Running"] = "В работе",
+        ["Sell all positions"] = "Продать все позиции",
+        ["Sell all positions?"] = "Продать все позиции?",
+        ["This sells every open position in TradeX."] = "Все открытые позиции в TradeX будут проданы.",
+        ["Sell position"] = "Продать позицию",
+        ["Sell all units of the selected asset"] = "Продать все единицы выбранного актива",
+        ["No market activity yet"] = "Действий на рынке пока нет",
+        ["No headlines yet"] = "Новостей пока нет",
+        ["Trading mode"] = "Режим торговли",
+        ["In-game cash"] = "Игровые деньги",
+        ["press Quote or trade"] = "Нажми «Расчёт» или соверши сделку",
+        ["Gigs"] = "Гиги",
+        ["Auto gigs"] = "Авто гиги",
+        ["Finds a gig, solves it and submits the work"] = "Находит гиг, решает его и сдаёт работу",
+        ["Delay"] = "Задержка",
+        [" s"] = " с",
+        ["# s"] = "# с",
+        ["Results"] = "Результаты",
+        ["No gigs yet"] = "Гигов пока нет",
+        ["Started"] = "Запущено",
+        ["Stopped"] = "Остановлено",
+        ["Next gigs in #s"] = "Следующие гиги через #с",
+        ["No gig:"] = "Нет гига:",
+        ["Submit failed:"] = "Сдача не прошла:",
+        ["Unsupported gig skipped"] = "Неизвестный гиг пропущен",
+        ["Roblux"] = "Roblux",
+        ["New project"] = "Новый проект",
+        ["Preview"] = "Превью",
+        ["Top picks"] = "Лучшие варианты",
+        ["Press Pick best combo"] = "Нажми «Подобрать лучший вариант»",
+        ["Title"] = "Название",
+        ["Pick best combo"] = "Подобрать лучший вариант",
+        ["Genre"] = "Жанр",
+        ["Theme"] = "Тема",
+        ["Mechanic"] = "Механика",
+        ["Audience"] = "Аудитория",
+        ["Scope"] = "Масштаб",
+        ["Starting budget"] = "Стартовый бюджет",
+        ["Create project"] = "Создать проект",
+        ["Combo"] = "Комбинация",
+        ["Trend"] = "Тренд",
+        ["Genre draw"] = "Жанр",
+        ["Audience fit"] = "Аудитория",
+        ["Budget"] = "Бюджет",
+        ["Best combos by genre"] = "Лучшие комбинации по жанрам",
+        ["Roblux data is unavailable"] = "Данные Roblux недоступны",
+        ["Great combo x%.2f"] = "Отличный набор x%.2f",
+        ["Good combo x%.2f"] = "Хороший набор x%.2f",
+        ["Okay combo x%.2f"] = "Нормальный набор x%.2f",
+        ["Odd combo x%.2f"] = "Странный набор x%.2f",
+        ["Trending x%.2f"] = "В тренде x%.2f",
+        ["Cold x%.2f"] = "Остывает x%.2f",
+        ["Steady x%.2f"] = "Ровно x%.2f",
+        ["Pop %.2f - ARPU %.2f - RET %.2f"] = "Охват %.2f - ARPU %.2f - Удержание %.2f",
+        ["Pop %.2f - ARPU %.2f - P2W %.2f"] = "Охват %.2f - ARPU %.2f - Донат %.2f",
+        ["Work %.0f - return x%.2f"] = "Работа %.0f - отдача x%.2f",
+        ["Content %d - polish %d"] = "Контент %d - полировка %d",
+        ["Started: %s"] = "Запущено: %s",
+        ["Analytics"] = "Аналитика",
+        ["Visits"] = "Визиты",
+        ["Retention"] = "Удержание",
+        ["Quality"] = "Качество",
+        ["Money"] = "Деньги",
+        ["Valuation"] = "Оценка",
+        ["Update"] = "Апдейт",
+        ["Auto update"] = "Авто-апдейт",
+        ["Starts an update, fills it with work and releases it"] = "Запускает апдейт, заполняет работой и выпускает",
+        ["Auto update started"] = "Авто-апдейт запущен",
+        ["Auto update stopped"] = "Авто-апдейт остановлен",
+        ["Update released"] = "Апдейт выпущен",
+        ["No live project"] = "Нет живой игры",
+        ["Work log"] = "Лог работы",
+        ["Auto work"] = "Авто-работа",
+        ["Opens a task, solves it and submits the work"] = "Открывает задачу, решает и сдаёт",
+        ["Run one round"] = "Один круг",
+        ["Jobs"] = "Задачи",
+        ["No project in development"] = "Нет проекта в разработке",
+        ["Accept"] = "Принять",
+        ["Decline"] = "Отклонить",
+        ["Research"] = "Проверить",
+        ["Offer"] = "Оффер",
+        ["Offers"] = "Офферы",
+        ["Offer log"] = "Лог офферов",
+        ["Auto offers"] = "Авто-офферы",
+        ["Checks the offer and takes it only at a fair price"] = "Проверяет оффер и берёт только по честной цене",
+        ["No offers yet"] = "Офферов пока нет",
+        ["No offer to research"] = "Нечего проверять",
+        ["No offer to decide"] = "Нечего решать",
+        ["Accepted"] = "Принят",
+        ["Declined"] = "Отклонён",
+        ["Ads"] = "Реклама",
+        ["Auto ads"] = "Авто-реклама",
+        ["Buys ads while the game is profitable"] = "Покупает рекламу, пока игра прибыльна",
+        ["Ad budget"] = "Бюджет рекламы",
+        ["Ad pool"] = "Пул рекламы",
+        ["Buy ads"] = "Купить рекламу",
+        ["Min profit"] = "Мин. прибыль",
+        ["Projects"] = "Проекты",
+        ["Target project"] = "Целевой проект",
+        ["Selected"] = "Выбран",
+        ["Refresh list"] = "Обновить список",
+        ["Work on selected"] = "Работать над выбранным",
+        ["Project list refreshed"] = "Список проектов обновлён",
+        ["No project selected"] = "Проект не выбран",
+        ["All activities on cooldown"] = "Все задачи на кулдауне",
+        ["Lifecycle"] = "Жизненный цикл",
+        ["Lifecycle log"] = "Лог цикла",
+        ["Auto lifecycle"] = "Авто-цикл",
+        ["Finishes a dev project, publishes it and retires dead games"] = "Доводит проект до релиза и убирает мёртвые игры",
+        ["Publish selected"] = "Опубликовать выбранный",
+        ["Publish"] = "Опубликовать",
+        ["Phase"] = "Фаза",
+        ["Idle"] = "Простой",
+        ["Nothing yet"] = "Пока пусто",
+        ["No project"] = "Нет проекта",
+        ["Needs 50% to publish"] = "Нужно 50% для публикации",
+        ["New project started"] = "Новый проект запущен",
+        ["Market"] = "Рынок",
+        ["Symbol"] = "Тикер",
+        ["Price"] = "Цена",
+        ["Position"] = "Позиция",
+        ["Quote"] = "Расчёт",
+        ["Trading"] = "Трейдинг",
+        ["Units"] = "Кол-во",
+        ["Buy"] = "Купить",
+        ["Sell"] = "Продать",
+        ["Max"] = "Макс",
+        ["Watch"] = "В список",
+        ["Portfolio"] = "Портфель",
+        ["Equity"] = "Капитал",
+        ["Cash"] = "Кэш",
+        ["Realized"] = "Реализовано",
+        ["Win rate"] = "Винрейт",
+        ["Fees"] = "Комиссии",
+        ["Best trade"] = "Лучшая сделка",
+        ["Holdings"] = "В портфеле",
+        ["Orders and alerts"] = "Ордера и алерты",
+        ["Limit price"] = "Цена лимита",
+        ["Orders log"] = "Лог ордеров",
+        ["Open"] = "Открыто",
+        ["Buy limit"] = "Лимит на покупку",
+        ["Sell limit"] = "Лимит на продажу",
+        ["Set alert"] = "Алерт",
+        ["Cancel orders"] = "Отменить ордера",
+        ["News"] = "Новости",
+        ["Refresh news"] = "Обновить новости",
+        ["Headlines"] = "Заголовки",
+        ["Auto trader"] = "Авто-трейдер",
+        ["Auto trade"] = "Авто-торговля",
+        ["Follows the strongest trend, takes profit and stops the loss"] = "Идёт за сильнейшим трендом: берёт профит и режет убыток",
+        ["Take profit"] = "Тейк-профит",
+        ["Stop loss"] = "Стоп-лосс",
+        ["Per trade"] = "На сделку",
+        ["Held"] = "В позициях",
+        ["Best signal"] = "Лучший сигнал",
+        ["Scan all"] = "Сканировать всё",
+        ["Trades"] = "Сделки",
+        ["Scanning"] = "Сканирую",
+        ["No market"] = "Нет рынка",
+        ["No trades yet"] = "Сделок пока нет",
+        ["No orders yet"] = "Ордеров пока нет",
+        ["No open orders"] = "Нет открытых ордеров",
+        ["Scan done"] = "Скан готов",
+        ["Units must be at least 1"] = "Минимум 1 юнит",
+        ["Cannot afford a unit"] = "Не хватает на юнит",
+        ["Enter a limit price"] = "Введи цену лимита",
+        ["Enter a price"] = "Введи цену",
+        ["Dry run"] = "Пробный прогон",
+        ["Only logs what it would do, no money spent"] = "Только пишет, что сделал бы, денег не тратит",
+        ["Paper"] = "Бумага",
+        ["Paper buy"] = "Бумажная покупка",
+        ["Paper sold"] = "Бумажная продажа",
+        ["Started (dry run)"] = "Запущено (пробный прогон)",
+        ["Started with in-game cash"] = "Запущено с игровыми деньгами",
+        ["Dry run on"] = "Пробный прогон включён",
+        ["Dry run off: using in-game cash"] = "Пробный прогон выключен: используются игровые деньги",
+        ["no trend"] = "нет тренда",
+        ["Signal"] = "Сигнал",
+        ["Strategy"] = "Стратегия",
+        ["Trend rider"] = "По тренду",
+        ["Momentum"] = "Импульс",
+        ["Trend gone"] = "Тренд кончился",
+        ["Paper exit"] = "Бумажный выход",
+        ["Multi work"] = "Мультиработа",
+        ["Works every open game at once, each has its own cooldown"] = "Работает по всем открытым играм сразу, у каждой свой кулдаун",
+        ["Multi work started"] = "Мультиработа запущена",
+        ["Multi work stopped"] = "Мультиработа остановлена",
+        ["Nothing to work on"] = "Нечего делать",
+        ["Open games"] = "Открытые игры",
+        ["none need work"] = "все сделаны",
+        ["Creates, develops, publishes, updates and retires games on its own"] = "Сам создаёт, ведёт, публикует, обновляет и убирает игры",
+        ["Retiring"] = "Закрываю",
+    },
+})
 
 local previous = getgenv().RobscriptETM
 if previous and previous.Window then
@@ -266,23 +468,23 @@ end
 ----- window -----
 
 local Window = Airflow:CreateWindow({
-    Name = "Robscript - Escape The Matrix",
-    LoadingSubtitle = "auto gigs",
+    Name = "Escape The Matrix",
+    Subtitle = "Robscript Team",
     ToggleUIKeybind = "RightControl",
-    Size = UDim2.fromOffset(600, 420),
+    Size = UDim2.fromOffset(860, 570),
     Theme = THEME,
     ConfigurationSaving = { Enabled = true, FolderName = "RobscriptETM" },
     Home = false,
 })
 
 local Tab = Window:CreateTab({ Name = "Gigs", Icon = "briefcase" })
-local ControlBox = Tab:CreateGroupbox({ Name = "Auto gigs", Side = "Left" })
+local ControlBox = Tab:CreateGroupbox({ Name = "Gigs", Side = "Left" })
 local ResultBox = Tab:CreateGroupbox({ Name = "Results", Side = "Right" })
 
 local results = ResultBox:CreateLog({
-    Name = "Results",
+    Name = "Gig activity",
     MaxEntries = 200,
-    MaxRows = 12,
+    MaxRows = 4,
     Timestamps = true,
     EmptyText = "No gigs yet",
 })
@@ -320,7 +522,7 @@ AutoGig = ControlBox:CreateToggle({
                             results:Push("<Warning>Submit failed: " .. tostring(submitted.err) .. "</Warning>")
                         end
                     else
-                        results:Push("<Muted>Skipped " .. tostring(kind) .. " gig</Muted>")
+                        results:Push("<Muted>Unsupported gig skipped</Muted>")
                     end
                 else
                     local text = tostring(started.err or "")
@@ -339,6 +541,15 @@ AutoGig = ControlBox:CreateToggle({
     end,
 })
 
+ControlBox:CreateStatus({
+    Name = "Status",
+    Value = "Idle",
+    Style = "Row",
+    Update = function()
+        return AutoGig.Value and "<Success>Running</Success>" or "<Muted>Idle</Muted>"
+    end,
+})
+
 ControlBox:CreateSlider({
     Name = "Delay",
     Range = { 0.15, 3 },
@@ -351,29 +562,3073 @@ ControlBox:CreateSlider({
     end,
 })
 
-ControlBox:CreateButton({
-    Name = "Stop",
-    Icon = "square",
-    Style = "Primary",
-    Callback = function()
-        if AutoGig.Value then
-            AutoGig:Set(false)
+----- Roblux tab -----
+
+local RobluxData = nil
+do
+    local module = Shared:FindFirstChild("RobluxData")
+    if module then
+        local ok, result = pcall(require, module)
+        if ok and type(result) == "table" then
+            RobluxData = result
         end
-        results:Push("<Warning>Stopped by hand</Warning>")
+    end
+end
+
+local TrendData = nil
+do
+    local module = Shared:FindFirstChild("TrendData")
+    if module then
+        local ok, result = pcall(require, module)
+        if ok and type(result) == "table" then
+            TrendData = result
+        end
+    end
+end
+
+local RobluxTab = Window:CreateTab({ Name = "Roblux", Icon = "gamepad-2" })
+local ProjectsPage = RobluxTab:CreateSubTab({ Name = "Projects" })
+local CreatePage = RobluxTab:CreateSubTab({ Name = "New project" })
+local GrowthPage = RobluxTab:CreateSubTab({ Name = "Growth" })
+
+local ProjectsBox = ProjectsPage:CreateGroupbox({ Name = "Target project", Side = "Left" })
+local WorkBox = ProjectsPage:CreateGroupbox({ Name = "Work", Side = "Left" })
+local AnalyticsBox = ProjectsPage:CreateGroupbox({ Name = "Analytics", Side = "Right" })
+local LifeBox = ProjectsPage:CreateGroupbox({ Name = "Lifecycle", Side = "Right" })
+local WorkActivityBox = ProjectsPage:CreateGroupbox({ Name = "Activity", Side = "Right", Collapsed = true })
+
+local BuildBox = CreatePage:CreateGroupbox({ Name = "New project", Side = "Left" })
+local PreviewBox = CreatePage:CreateGroupbox({ Name = "Preview", Side = "Right" })
+local PicksBox = CreatePage:CreateGroupbox({ Name = "Top picks", Side = "Right" })
+
+local robluxLog = PicksBox:CreateLog({
+    Name = "Ranked combos",
+    MaxEntries = 120,
+    MaxRows = 4,
+    Timestamps = false,
+    EmptyText = "Press Pick best combo",
+})
+
+local RobluxAPI = nil
+local refreshProjectPicker
+
+local function tr(template, ...)
+    local args = table.pack(...)
+    local ok, text = pcall(function()
+        return Airflow:T(template, table.unpack(args, 1, args.n))
+    end)
+    if ok and type(text) == "string" then
+        return text
+    end
+    return string.format(template, table.unpack(args, 1, args.n))
+end
+
+if not RobluxData then
+    BuildBox:CreateLabel({ Text = "<Warning>Roblux data is unavailable</Warning>" })
+else
+    local selection = {
+        genre = RobluxData.GENRES[1].id,
+        theme = RobluxData.THEMES[1].id,
+        mech = RobluxData.MECHS[1].id,
+        aud = RobluxData.AUDIENCES[1].id,
+        scope = RobluxData.SCOPES[1].id,
+        budget = 1,
+        title = "",
+    }
+
+    local function findById(list, id)
+        for _, item in ipairs(list) do
+            if item.id == id then
+                return item
+            end
+        end
+        return list[1]
+    end
+
+    local function genreTrend(genreId)
+        local multiplier = 1
+        for _, trend in ipairs((Net.state.trends or {}).active or {}) do
+            local entry = TrendData and TrendData.byId and TrendData.byId[trend.id]
+            local effect = entry and entry.effects and entry.effects.genre and entry.effects.genre[genreId]
+            if effect then
+                multiplier *= 1 + effect * (trend.pop or 0)
+            end
+        end
+        return multiplier
+    end
+
+    local function fitOf(combo)
+        local themeFit = (RobluxData.THEME_FIT[combo.genre] or {})[combo.theme] or 1
+        local mechFit = (RobluxData.MECH_FIT[combo.genre] or {})[combo.mech] or 1
+        local audFit = (RobluxData.AUD_FIT[combo.genre] or {})[combo.aud] or 1
+        return themeFit * mechFit * audFit
+    end
+
+    local function comboLabel(fit)
+        if fit >= 1.4 then
+            return "Great combo x%.2f"
+        elseif fit >= 1.1 then
+            return "Good combo x%.2f"
+        elseif fit >= 0.9 then
+            return "Okay combo x%.2f"
+        end
+        return "Odd combo x%.2f"
+    end
+
+    local function bestForGenre(genre)
+        local best = nil
+        for _, theme in ipairs(RobluxData.THEMES) do
+            for _, mech in ipairs(RobluxData.MECHS) do
+                for _, aud in ipairs(RobluxData.AUDIENCES) do
+                    local combo = { genre = genre.id, theme = theme.id, mech = mech.id, aud = aud.id }
+                    local fit = fitOf(combo)
+                    if not best or fit > best.fit then
+                        best = { genre = genre, theme = theme, mech = mech, aud = aud, fit = fit }
+                    end
+                end
+            end
+        end
+        best.trend = genreTrend(genre.id)
+        best.score = best.fit * best.trend
+        return best
+    end
+
+    local function ranking()
+        local list = {}
+        for _, genre in ipairs(RobluxData.GENRES) do
+            table.insert(list, bestForGenre(genre))
+        end
+        table.sort(list, function(first, second)
+            return first.score > second.score
+        end)
+        return list
+    end
+
+    local genreOptions, themeOptions, mechOptions, audOptions = {}, {}, {}, {}
+    local genreMap, themeMap, mechMap, audMap = {}, {}, {}, {}
+    for _, item in ipairs(RobluxData.GENRES) do
+        table.insert(genreOptions, item.name)
+        genreMap[item.name] = item.id
+    end
+    for _, item in ipairs(RobluxData.THEMES) do
+        table.insert(themeOptions, item.name)
+        themeMap[item.name] = item.id
+    end
+    for _, item in ipairs(RobluxData.MECHS) do
+        table.insert(mechOptions, item.name)
+        mechMap[item.name] = item.id
+    end
+    for _, item in ipairs(RobluxData.AUDIENCES) do
+        table.insert(audOptions, item.name)
+        audMap[item.name] = item.id
+    end
+
+    local scopeOptions, budgetOptions = {}, {}
+    local scopeMap, budgetMap = {}, {}
+    for _, item in ipairs(RobluxData.SCOPES) do
+        local suffix = (item.dev and item.dev > 1) and (" (needs Dev " .. tostring(item.dev) .. ")") or ""
+        local display = item.name .. suffix
+        table.insert(scopeOptions, display)
+        scopeMap[display] = item.id
+    end
+    for index, item in ipairs(RobluxData.BUDGETS) do
+        table.insert(budgetOptions, item.name)
+        budgetMap[item.name] = index
+    end
+
+    local function optionValue(value)
+        local id = string.match(tostring(value), "|([^|]+)$")
+        return id or tostring(value)
+    end
+
+    local GenreDrop, ThemeDrop, MechDrop, AudDrop
+
+    local function applyBest()
+        local list = ranking()
+        local best = list[1]
+        selection.genre = best.genre.id
+        selection.theme = best.theme.id
+        selection.mech = best.mech.id
+        selection.aud = best.aud.id
+
+        if GenreDrop then
+            GenreDrop:Set(best.genre.name)
+            ThemeDrop:Set(best.theme.name)
+            MechDrop:Set(best.mech.name)
+            AudDrop:Set(best.aud.name)
+        end
+
+        robluxLog:Clear()
+        robluxLog:Push("<Accent>Best combos by genre</Accent>")
+        for index, entry in ipairs(list) do
+            if index > 6 then
+                break
+            end
+            local line = tr("%s x%.2f", entry.genre.name, entry.score)
+                .. " <Muted>"
+                .. entry.theme.name
+                .. " + "
+                .. entry.mech.name
+                .. " + "
+                .. entry.aud.name
+                .. "</Muted>"
+            robluxLog:Push(index == 1 and ("<Success>" .. line .. "</Success>") or line)
+        end
+    end
+
+    BuildBox:CreateButton({
+        Name = "Pick best combo",
+        Icon = "sparkles",
+        Callback = applyBest,
+    })
+
+    local titleInput
+    titleInput = BuildBox:CreateInput({
+        Name = "Title",
+        PlaceholderText = "Brainrot Pet Simulator",
+        Flag = "RobluxTitle",
+        Callback = function(text)
+            selection.title = string.sub(tostring(text), 1, 30)
+        end,
+    })
+
+    GenreDrop = BuildBox:CreateDropdown({
+        Name = "Genre",
+        Options = genreOptions,
+        CurrentOption = genreOptions[1],
+        Flag = "RobluxGenre",
+        Callback = function(value)
+            selection.genre = genreMap[value] or selection.genre
+        end,
+    })
+
+    ThemeDrop = BuildBox:CreateDropdown({
+        Name = "Theme",
+        Options = themeOptions,
+        CurrentOption = themeOptions[1],
+        Flag = "RobluxTheme",
+        Callback = function(value)
+            selection.theme = themeMap[value] or selection.theme
+        end,
+    })
+
+    MechDrop = BuildBox:CreateDropdown({
+        Name = "Mechanic",
+        Options = mechOptions,
+        CurrentOption = mechOptions[1],
+        Flag = "RobluxMech",
+        Callback = function(value)
+            selection.mech = mechMap[value] or selection.mech
+        end,
+    })
+
+    AudDrop = BuildBox:CreateDropdown({
+        Name = "Audience",
+        Options = audOptions,
+        CurrentOption = audOptions[1],
+        Flag = "RobluxAud",
+        Callback = function(value)
+            selection.aud = audMap[value] or selection.aud
+        end,
+    })
+
+    BuildBox:CreateDropdown({
+        Name = "Scope",
+        Options = scopeOptions,
+        CurrentOption = scopeOptions[1],
+        Flag = "RobluxScope",
+        Callback = function(value)
+            selection.scope = scopeMap[value] or selection.scope
+        end,
+    })
+
+    BuildBox:CreateDropdown({
+        Name = "Starting budget",
+        Options = budgetOptions,
+        CurrentOption = budgetOptions[1],
+        Flag = "RobluxBudget",
+        Callback = function(value)
+            selection.budget = budgetMap[value] or selection.budget
+        end,
+    })
+
+    local function currentTitle()
+        local typed = selection.title
+        if titleInput and type(titleInput.Get) == "function" then
+            local ok, value = pcall(titleInput.Get, titleInput)
+            if ok and type(value) == "string" and value ~= "" then
+                typed = string.sub(value, 1, 30)
+            end
+        end
+        if typed == "" then
+            local genre = findById(RobluxData.GENRES, selection.genre)
+            local theme = findById(RobluxData.THEMES, selection.theme)
+            typed = theme.name .. " " .. genre.name
+        end
+        return string.sub(typed, 1, 30)
+    end
+
+    local function createProject()
+        local title = currentTitle()
+        local result = request("RbxCreate", {
+            title = title,
+            genre = selection.genre,
+            theme = selection.theme,
+            mech = selection.mech,
+            aud = selection.aud,
+            scope = selection.scope,
+            budget = selection.budget,
+        })
+        if result.ok then
+            robluxLog:Push("<Success>Started</Success> <Muted>" .. title .. "</Muted>")
+        else
+            robluxLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+        end
+        return result
+    end
+
+    BuildBox:CreateButton({
+        Name = "Create project",
+        Icon = "play",
+        Style = "Primary",
+        Confirm = true,
+        Callback = createProject,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Combo",
+        Style = "Row",
+        Pin = true,
+        UpdateRate = 0.5,
+        Update = function()
+            local combo = {
+                genre = selection.genre,
+                theme = selection.theme,
+                mech = selection.mech,
+                aud = selection.aud,
+            }
+            local fit = fitOf(combo)
+            local text = tr(comboLabel(fit), fit)
+            if fit >= 1.1 then
+                return "<Success>" .. text .. "</Success>"
+            elseif fit >= 0.9 then
+                return "<Warning>" .. text .. "</Warning>"
+            end
+            return "<Error>" .. text .. "</Error>"
+        end,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Trend",
+        Style = "Row",
+        UpdateRate = 1,
+        Update = function()
+            local trend = genreTrend(selection.genre)
+            if trend > 1.05 then
+                return "<Success>" .. tr("Trending x%.2f", trend) .. "</Success>"
+            elseif trend < 0.95 then
+                return "<Muted>" .. tr("Cold x%.2f", trend) .. "</Muted>"
+            end
+            return "<Muted>" .. tr("Steady x%.2f", trend) .. "</Muted>"
+        end,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Genre draw",
+        Style = "Row",
+        UpdateRate = 1,
+        Update = function()
+            local genre = findById(RobluxData.GENRES, selection.genre)
+            return "<Muted>" .. tr("Pop %.2f - ARPU %.2f - RET %.2f", genre.pop or 1, genre.arpu or 1, genre.ret or 1) .. "</Muted>"
+        end,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Audience fit",
+        Style = "Row",
+        UpdateRate = 1,
+        Update = function()
+            local aud = findById(RobluxData.AUDIENCES, selection.aud)
+            return "<Muted>" .. tr("Pop %.2f - ARPU %.2f - P2W %.2f", aud.pop or 1, aud.arpu or 1, aud.p2w or 0) .. "</Muted>"
+        end,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Scope",
+        Style = "Row",
+        UpdateRate = 1,
+        Update = function()
+            local scope = findById(RobluxData.SCOPES, selection.scope)
+            return "<Muted>" .. tr("Work %.0f - return x%.2f", scope.work or 0, scope.ret or 1) .. "</Muted>"
+        end,
+    })
+
+    PreviewBox:CreateStatus({
+        Name = "Budget",
+        Style = "Row",
+        UpdateRate = 1,
+        Update = function()
+            local budget = RobluxData.BUDGETS[selection.budget] or RobluxData.BUDGETS[1]
+            return "<Muted>" .. tr("Content %d - polish %d", budget.content or 0, budget.polish or 0) .. "</Muted>"
+        end,
+    })
+
+----- Roblux work solver -----
+
+local WorkLog = WorkActivityBox:CreateLog({
+    Name = "Work log",
+    MaxEntries = 200,
+    MaxRows = 5,
+    Timestamps = true,
+    EmptyText = "Nothing yet",
+})
+
+local CACHE_PATH = "RobscriptETM_roblux2.json"
+local UI_CACHE_VERSION = 2
+local HttpService = game:GetService("HttpService")
+local solved = {}
+local stats = { jobs = 0, scoreSum = 0, full = 0 }
+
+local function loadCache()
+    if type(isfile) ~= "function" or type(readfile) ~= "function" then
+        return
+    end
+    local ok, exists = pcall(isfile, CACHE_PATH)
+    if not ok or not exists then
+        return
+    end
+    local decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(CACHE_PATH))
+    end)
+    if type(decoded) == "table" then
+        solved = decoded
+        -- v1.8 learned layouts from failed runs, so those entries are dropped once.
+        if solved.uiVersion ~= UI_CACHE_VERSION then
+            solved.ui = {}
+            solved.uiVersion = UI_CACHE_VERSION
+        end
+    end
+end
+
+local function saveCache()
+    if type(writefile) ~= "function" then
+        return
+    end
+    pcall(function()
+        writefile(CACHE_PATH, HttpService:JSONEncode(solved))
+    end)
+end
+
+loadCache()
+
+local function normalize(text)
+    local value = string.lower(tostring(text or ""))
+    value = string.gsub(value, "%d+", "#")
+    value = string.gsub(value, "[^%w# ]", "")
+    return value
+end
+
+local function signature(activity, content)
+    if activity == "script" then
+        return normalize(content.title)
+    elseif activity == "debug" then
+        return normalize(content.log)
+    elseif activity == "build" then
+        return normalize(content.brief)
+    elseif activity == "ui" then
+        local parts = {}
+        for _, element in ipairs(content.elements or {}) do
+            table.insert(parts, normalize(element))
+        end
+        table.sort(parts)
+        return table.concat(parts, "|")
+    elseif activity == "anim" then
+        return normalize(content.name)
+    end
+    return normalize(content.title or content.name or content.brief or content.report)
+end
+
+local STOP_WORDS = {}
+for word in string.gmatch("the a an and or for with that this to of in on is are be it you your they their them when every time some someone my me we our at by as so but not no up out all can just more most too very into from then than there here what which who why how its it's dont dont", "%a+") do
+    STOP_WORDS[word] = true
+end
+
+local function stems(text)
+    local set = {}
+    for word in string.gmatch(string.lower(tostring(text or "")), "%a+") do
+        if not STOP_WORDS[word] and #word > 2 then
+            local stem = string.gsub(word, "ing$", "")
+            stem = string.gsub(stem, "ed$", "")
+            stem = string.gsub(stem, "es$", "")
+            stem = string.gsub(stem, "s$", "")
+            set[stem] = true
+        end
+    end
+    return set
+end
+
+local function overlapScore(first, second)
+    local count = 0
+    for key in pairs(first) do
+        if second[key] then
+            count += 1
+        end
+    end
+    return count
+end
+
+local SCRIPT_MARKERS = {
+    "no pause", "forever", "every frame", "without waiting", "never stops",
+    "brand new", "restart", "lowercase", "exactly", "first match",
+    "top to bottom", "inside the", "every time",
+}
+
+local function solveScript(content)
+    local titleWords = stems(content.title)
+    local plain = content.plain or {}
+    local best, bestScore = 1, -1
+    for index, line in ipairs(plain) do
+        local lower = string.lower(tostring(line))
+        local score = overlapScore(titleWords, stems(line))
+        for _, marker in ipairs(SCRIPT_MARKERS) do
+            if string.find(lower, marker, 1, true) then
+                score += 1
+            end
+        end
+        if score > bestScore then
+            best, bestScore = index, score
+        end
+    end
+    return best
+end
+
+local function solveDebug(content)
+    local words = stems(tostring(content.report) .. " " .. tostring(content.log))
+    local best, bestScore = 1, -1
+    for index, option in ipairs(content.options or {}) do
+        local score = overlapScore(words, stems(option))
+        if score > bestScore then
+            best, bestScore = index, score
+        end
+    end
+    return best
+end
+
+local BUILD_CATEGORIES = {
+    { match = "dark|night|dim|blackout", part = "dark" },
+    { match = "scare|tense|fear|horror|spooky", part = "jumpscare" },
+    { match = "survive|survival|light|tool", part = "flashlight" },
+    { match = "challenge|platform|jump|parkour", part = "moving platform" },
+    { match = "save|checkpoint|respawn|restart", part = "checkpoint" },
+    { match = "danger|die|deadly|lava|kill", part = "kill brick" },
+    { match = "pet|collect|egg|hatch", part = "pet egg" },
+    { match = "trade|trading|shop|business", part = "trading booth" },
+    { match = "leaderboard|rank|score", part = "leaderboard" },
+    { match = "car|dealership|vehicle", part = "car dealership" },
+    { match = "reward|drop|gift", part = "dropper" },
+    { match = "money|income|profit|earn|cash|coin|dollar", part = "dropper" },
+    { match = "invest|upgrade|spend|improve", part = "upgrade button" },
+    { match = "conveyor|transport|flow|automat|carry", part = "conveyor" },
+    { match = "spawn|start point|begin", part = "spawn point" },
+    { match = "chat|social|talk|stage", part = "chat stage" },
+    { match = "sword|weapon|fight|combat|battle", part = "sword rack" },
+}
+
+-- Lua patterns have no alternation: "a|b|c" matches the literal text "a|b|c".
+-- Keyword lists above are split on "|" and compared as plain substrings.
+local function hasKeyword(text, list)
+    for word in string.gmatch(tostring(list), "[^|]+") do
+        if string.find(text, word, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function solveBuild(content)
+    local brief = string.lower(tostring(content.brief or ""))
+    local wanted = {}
+    for _, rule in ipairs(BUILD_CATEGORIES) do
+        if hasKeyword(brief, rule.match) then
+            wanted[rule.part] = true
+        end
+    end
+    local scored = {}
+    for index, option in ipairs(content.options or {}) do
+        local lower = string.lower(tostring(option))
+        local score = 0
+        for part in pairs(wanted) do
+            if string.find(lower, part, 1, true) then
+                score += 2
+            end
+        end
+        score += overlapScore(stems(content.brief), stems(option))
+        table.insert(scored, { index = index, score = score })
+    end
+    table.sort(scored, function(first, second)
+        if first.score ~= second.score then
+            return first.score > second.score
+        end
+        return first.index < second.index
+    end)
+    local picks = {}
+    local limit = tonumber(content.pick) or 3
+    for i = 1, math.min(limit, #scored) do
+        table.insert(picks, scored[i].index)
+    end
+    return picks
+end
+
+-- Zones the game accepts for a UI element. Credits and settings sit in the top corners
+-- (either one is fine, they only have to differ), the shop goes where thumbs reach and
+-- the middle of the screen must stay free.
+local UI_RULES = {
+    { match = "currency|cash|coin|gem|money|points|token|bucks|robux", spot = "top-left" },
+    { match = "settings|menu|pause|gear|options|close", spot = "top-right" },
+    { match = "shop|store|bag|cart|buy|inventory|backpack", spot = "bottom-center" },
+    { match = "health|heart|hp|shield|armor|life", spot = "top-left" },
+    { match = "map|minimap|compass|radar", spot = "top-right" },
+    { match = "chat|log|feed|notification|news", spot = "left side" },
+    { match = "joystick|move|jump|sprint|dash|attack|ability", spot = "bottom-center" },
+    { match = "timer|clock|score|wave|level|xp|rank", spot = "top-right" },
+    { match = "quest|objective|mission|task", spot = "left side" },
+    { match = "name|player|profile|avatar", spot = "top-left" },
+}
+
+local function findSpot(spots, wanted)
+    for index, spot in ipairs(spots) do
+        if string.lower(tostring(spot)) == wanted then
+            return index
+        end
+    end
+    return nil
+end
+
+-- Never park an unknown element in the middle: the game scores that as blocked view.
+local UI_FALLBACK = { "bottom-center", "left side", "top-left", "top-right" }
+local UI_MIDDLE = "center of screen"
+
+local function isMiddle(spot)
+    return string.lower(tostring(spot or "")) == UI_MIDDLE
+end
+
+local function solveUi(content)
+    local spots = content.spots or {}
+    local used = {}
+    local answer = {}
+    local function take(wanted)
+        local found = findSpot(spots, wanted)
+        if found and not used[found] then
+            return found
+        end
+        return nil
+    end
+    for index, element in ipairs(content.elements or {}) do
+        local lower = string.lower(tostring(element))
+        local pick = nil
+        local learnedSpot = solved.ui and solved.ui[normalize(element)]
+        if learnedSpot and not isMiddle(learnedSpot) then
+            pick = take(string.lower(tostring(learnedSpot)))
+        end
+        if not pick then
+            for _, rule in ipairs(UI_RULES) do
+                if hasKeyword(lower, rule.match) then
+                    pick = take(rule.spot)
+                    if pick then
+                        break
+                    end
+                end
+            end
+        end
+        if not pick then
+            for _, wanted in ipairs(UI_FALLBACK) do
+                pick = take(wanted)
+                if pick then
+                    break
+                end
+            end
+        end
+        if not pick then
+            for spotIndex = 1, #spots do
+                if not used[spotIndex] and not isMiddle(spots[spotIndex]) then
+                    pick = spotIndex
+                    break
+                end
+            end
+        end
+        if not pick then
+            for spotIndex = 1, #spots do
+                if not used[spotIndex] then
+                    pick = spotIndex
+                    break
+                end
+            end
+        end
+        pick = pick or 1
+        used[pick] = true
+        answer[index] = pick
+    end
+    return answer
+end
+
+local ANIM_RANKS = {
+    { match = "anticipation", rank = 1 },
+    { match = "wind%-up", rank = 1 },
+    { match = "windup", rank = 1 },
+    { match = "prep", rank = 1 },
+    { match = "action", rank = 2 },
+    { match = "swing", rank = 2 },
+    { match = "strike", rank = 2 },
+    { match = "impact", rank = 2 },
+    { match = "push off", rank = 2 },
+    { match = "follow%-through", rank = 3 },
+    { match = "follow", rank = 3 },
+    { match = "overshoot", rank = 3 },
+    { match = "settle", rank = 4 },
+    { match = "recover", rank = 4 },
+    { match = "return", rank = 4 },
+    { match = "land", rank = 4 },
+}
+
+local function frameRank(frame)
+    local lower = string.lower(tostring(frame))
+    for _, rule in ipairs(ANIM_RANKS) do
+        if string.find(lower, rule.match) then
+            return rule.rank
+        end
+    end
+    return 5
+end
+
+local function solveAnim(content)
+    local order = {}
+    for index, frame in ipairs(content.frames or {}) do
+        table.insert(order, { index = index, rank = frameRank(frame), name = string.lower(tostring(frame)) })
+    end
+    table.sort(order, function(first, second)
+        if first.rank ~= second.rank then
+            return first.rank < second.rank
+        end
+        return first.name < second.name
+    end)
+    local answer = {}
+    for i = 1, math.min(4, #order) do
+        answer[i] = order[i].index
+    end
+    return answer
+end
+
+local function heuristic(activity, content)
+    if activity == "script" then
+        return solveScript(content)
+    elseif activity == "debug" then
+        return solveDebug(content)
+    elseif activity == "build" then
+        return solveBuild(content)
+    elseif activity == "ui" then
+        return solveUi(content)
+    elseif activity == "anim" then
+        return solveAnim(content)
+    end
+    return 1
+end
+
+local function matchNameIndex(list, name)
+    local target = string.lower(tostring(name))
+    target = string.gsub(target, "^%s+", "")
+    target = string.gsub(target, "%s+$", "")
+    for index, item in ipairs(list or {}) do
+        local value = string.lower(tostring(item))
+        if value == target then
+            return index
+        end
+    end
+    for index, item in ipairs(list or {}) do
+        local value = string.lower(tostring(item))
+        if string.find(value, target, 1, true) or string.find(target, value, 1, true) then
+            return index
+        end
+    end
+    return nil
+end
+
+local function learnFromExplain(activity, content, result)
+    if result.correct ~= nil then
+        return result.correct
+    end
+    local explain = tostring(result.explain or "")
+    if activity == "build" then
+        local list = string.match(explain, "brief needed: (.+)%.")
+        if list then
+            local picks = {}
+            for name in string.gmatch(list, "[^,]+") do
+                local index = matchNameIndex(content.options or {}, name)
+                if index then
+                    table.insert(picks, index)
+                end
+            end
+            if #picks > 0 then
+                return picks
+            end
+        end
+    elseif activity == "anim" then
+        local list = string.match(explain, "Order: (.+)")
+        if list then
+            local order = {}
+            for name in string.gmatch(list, "([^>]+)") do
+                local index = matchNameIndex(content.frames or {}, name)
+                if index then
+                    table.insert(order, index)
+                end
+            end
+            if #order == #(content.frames or {}) then
+                return order
+            end
+        end
+    end
+    return nil
+end
+
+local function namesToIndices(list, names)
+    local answer = {}
+    for _, name in ipairs(names or {}) do
+        local index = matchNameIndex(list, name)
+        if not index then
+            return nil
+        end
+        table.insert(answer, index)
+    end
+    return answer
+end
+
+local currentProject = function()
+    local target = getgenv().RobluxTarget
+    if target then
+        for _, project in pairs((Net.state.rbx or {}).projects or {}) do
+            if project.id == target and project.phase ~= "closed" then
+                return project
+            end
+        end
+    end
+    local newest = nil
+    for _, project in pairs((Net.state.rbx or {}).projects or {}) do
+        if project.phase == "dev" or project.phase == "live" then
+            if not newest or (project.created or 0) > (newest.created or 0) then
+                newest = project
+            end
+        end
+    end
+    return newest
+end
+
+local ACTIVITY_ORDER = { "script", "build", "ui", "anim", "debug" }
+
+-- Every project has its own 20 s cooldown per activity (verified in the client: a session
+-- on one project does not block the same activity on another). That is what makes working
+-- several games at once possible: projects take turns while their own timers tick down.
+local function openProjects()
+    local list = {}
+    for _, project in pairs((Net.state.rbx or {}).projects or {}) do
+        if project.phase ~= "closed" then
+            local parts = project.parts or {}
+            local progress = tonumber(parts.progress) or 0
+            local update = project.update
+            local developing = project.phase == "dev" and progress < 1
+            local updating = type(update) == "table" and (tonumber(update.done) or 0) < (tonumber(update.need) or 0)
+            if developing or updating then
+                table.insert(list, project)
+            end
+        end
+    end
+    table.sort(list, function(first, second)
+        if first.phase ~= second.phase then
+            return first.phase == "dev"
+        end
+        return (first.created or 0) < (second.created or 0)
+    end)
+    return list
+end
+
+local function runOne(activity, target)
+    local project = target or currentProject()
+    if not project then
+        WorkLog:Push("<Warning>No project in development</Warning>")
+        return false
+    end
+    local label = ""
+    if target then
+        label = "<Muted>" .. tostring(project.title or project.id) .. " #" .. tostring(project.id) .. ":</Muted> "
+    end
+    local session = request("RbxSession", project.id, activity)
+    if not session.ok then
+        local message = tostring(session.err or "")
+        if string.find(string.lower(message), "breather") then
+            return false
+        end
+        WorkLog:Push("<Warning>" .. message .. "</Warning>")
+        return false
+    end
+    local content = session.content or {}
+    local key = signature(activity, content)
+    local learned = solved[activity] and solved[activity][key]
+    local answer = nil
+    if learned ~= nil then
+        if activity == "build" or activity == "anim" then
+            local list = (activity == "build") and content.options or content.frames
+            answer = namesToIndices(list, learned)
+        else
+            answer = learned
+        end
+    end
+    local fromCache = answer ~= nil
+    answer = answer or heuristic(activity, content)
+    local result = request("RbxSubmit", session.sid, answer)
+    if not result.ok then
+        WorkLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+        return false
+    end
+    local score = tonumber(result.score) or 0
+    stats.jobs += 1
+    stats.scoreSum += score
+    if score >= 0.99 then
+        stats.full += 1
+    end
+    if result.correct ~= nil then
+        solved[activity] = solved[activity] or {}
+        solved[activity][key] = result.correct
+        saveCache()
+    else
+        local explain = tostring(result.explain or "")
+        if activity == "build" then
+            local list = string.match(explain, "brief needed: (.+)%.")
+            if list then
+                local names = {}
+                for name in string.gmatch(list, "[^,]+") do
+                    table.insert(names, (string.gsub(name, "^%s+", "")))
+                end
+                if #names > 0 then
+                    solved.build = solved.build or {}
+                    solved.build[key] = names
+                    saveCache()
+                end
+            end
+        elseif activity == "anim" then
+            local list = string.match(explain, "Order: (.+)")
+            if list then
+                local names = {}
+                for name in string.gmatch(list, "([^>]+)") do
+                    table.insert(names, (string.gsub(name, "^%s+", "")))
+                end
+                if #names > 0 then
+                    solved.anim = solved.anim or {}
+                    solved.anim[key] = names
+                    saveCache()
+                end
+            end
+        elseif activity == "ui" then
+            -- A partial score never says which element missed, so probing on failure only
+            -- poisons the cache. Only a perfect layout is worth remembering.
+            if score >= 0.99 then
+                solved.ui = solved.ui or {}
+                for index, element in ipairs(content.elements or {}) do
+                    local spot = (content.spots or {})[answer[index]]
+                    if spot then
+                        solved.ui[normalize(element)] = string.lower(tostring(spot))
+                    end
+                end
+                saveCache()
+            end
+        end
+    end
+    local color = score >= 0.99 and "Success" or (score >= 0.5 and "Warning" or "Error")
+    local prefix = fromCache and " (known)" or ""
+    WorkLog:Push(label .. "<" .. color .. ">" .. activity .. " " .. math.floor(score * 100) .. "%" .. prefix .. "</" .. color .. "> <Muted>+" .. string.format("%.1f", result.work or 0) .. " work</Muted>")
+    return true
+end
+
+local AutoWork
+AutoWork = WorkBox:CreateToggle({
+    Name = "Auto work",
+    Desc = "Opens a task, solves it and submits the work",
+    Flag = "RobluxAutoWork",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            WorkLog:Push("<Muted>Stopped</Muted>")
+            return
+        end
+        WorkLog:Push("<Success>Started</Success>")
+        task.spawn(function()
+            while AutoWork.Value do
+                local did = false
+                for _, activity in ipairs(ACTIVITY_ORDER) do
+                    if not AutoWork.Value then
+                        break
+                    end
+                    if runOne(activity) then
+                        did = true
+                    end
+                    task.wait(0.5)
+                end
+                if not did then
+                    task.wait(5)
+                end
+                local project = currentProject()
+                if not project then
+                    AutoWork:Set(false)
+                    WorkLog:Push("<Muted>No projects left</Muted>")
+                end
+            end
+        end)
     end,
 })
 
-ControlBox:CreateLabel({ Text = "<Muted>Tag, scam and proof gigs are solved automatically.</Muted>" })
+WorkBox:CreateButton({
+    Name = "Run one round",
+    Icon = "play",
+    Callback = function()
+        for _, activity in ipairs(ACTIVITY_ORDER) do
+            runOne(activity)
+            task.wait(0.4)
+        end
+    end,
+})
+
+WorkBox:CreateStatus({
+    Name = "Jobs",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        local average = stats.jobs > 0 and (stats.scoreSum / stats.jobs) or 0
+        return string.format("<Muted>%d jobs - avg %d%% - perfect %d</Muted>", stats.jobs, math.floor(average * 100), stats.full)
+    end,
+})
+
+local cooldownUntil = {}
+
+local function isReady(project, activity)
+    local stamp = cooldownUntil[tostring(project.id) .. ":" .. activity]
+    return stamp == nil or os.clock() >= stamp
+end
+
+local function markCooldown(project, activity, seconds)
+    cooldownUntil[tostring(project.id) .. ":" .. activity] = os.clock() + (seconds or 21)
+end
+
+local MultiWork
+MultiWork = WorkBox:CreateToggle({
+    Name = "Multi work",
+    Desc = "Works every open game at once, each has its own cooldown",
+    Flag = "RobluxMultiWork",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            WorkLog:Push("<Muted>Multi work stopped</Muted>")
+            return
+        end
+        WorkLog:Push("<Success>Multi work started</Success>")
+        task.spawn(function()
+            while MultiWork.Value do
+                local list = openProjects()
+                if #list == 0 then
+                    WorkLog:Push("<Muted>Nothing to work on</Muted>")
+                    MultiWork:Set(false)
+                    break
+                end
+                local did = false
+                for _, project in ipairs(list) do
+                    for _, activity in ipairs(ACTIVITY_ORDER) do
+                        if not MultiWork.Value then
+                            break
+                        end
+                        if isReady(project, activity) then
+                            if runOne(activity, project) then
+                                markCooldown(project, activity, 21)
+                                did = true
+                            else
+                                markCooldown(project, activity, 5)
+                            end
+                            task.wait(0.15)
+                        end
+                    end
+                end
+                if not did then
+                    task.wait(1)
+                end
+            end
+        end)
+    end,
+})
+
+WorkBox:CreateStatus({
+    Name = "Open games",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local list = openProjects()
+        if #list == 0 then
+            return "<Muted>none need work</Muted>"
+        end
+        local parts = {}
+        for _, project in ipairs(list) do
+            local progress = tonumber((project.parts or {}).progress) or 0
+            local update = project.update
+            if type(update) == "table" then
+                table.insert(parts, string.format("%s #%s update %.0f%%", tostring(project.title), tostring(project.id), math.min(100, (tonumber(update.done) or 0) / math.max(1, tonumber(update.need) or 1) * 100)))
+            else
+                table.insert(parts, string.format("%s #%s %.0f%%", tostring(project.title), tostring(project.id), progress * 100))
+            end
+        end
+        return "<Text>" .. tostring(#list) .. "</Text> <Muted>" .. table.concat(parts, " | ") .. "</Muted>"
+    end,
+})
+
+----- Roblux analytics + auto update -----
+
+local activeProject = currentProject
+
+local function liveOf()
+    local project = activeProject()
+    return project, (project and project.live) or {}
+end
+
+local function number(value, digits)
+    local format = "%." .. tostring(digits or 0) .. "f"
+    return string.format(format, tonumber(value) or 0)
+end
+
+AnalyticsBox:CreateStatus({
+    Name = "CCU",
+    Style = "Row",
+    Pin = true,
+    UpdateRate = 1,
+    Update = function()
+        local project, live = liveOf()
+        if not project then
+            return "<Muted>no project</Muted>"
+        end
+        local peak = tonumber(live.peak) or 0
+        local current = tonumber(live.ccu) or 0
+        local text = number(current, 0) .. " / " .. number(peak, 0)
+        if peak > 0 and current >= peak * 0.9 then
+            return "<Success>" .. text .. "</Success>"
+        end
+        return "<Text>" .. text .. "</Text>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Visits",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local _, live = liveOf()
+        return "<Muted>" .. number(live.visits, 0) .. " visits</Muted>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Retention",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local _, live = liveOf()
+        local retention = (tonumber(live.ret) or 0) * 100
+        local text = number(retention, 0) .. "%"
+        if retention >= 35 then
+            return "<Success>" .. text .. "</Success>"
+        elseif retention >= 20 then
+            return "<Warning>" .. text .. "</Warning>"
+        end
+        return "<Error>" .. text .. "</Error>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Quality",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local project = activeProject()
+        if not project then
+            return "<Muted>-</Muted>"
+        end
+        local quality = tonumber(project.q) or 0
+        local bugs = tonumber(project.bugs) or 0
+        local text = number(quality, 0) .. " q, " .. number(bugs, 0) .. " bugs"
+        if bugs > 0 then
+            return "<Warning>" .. text .. "</Warning>"
+        end
+        return "<Success>" .. text .. "</Success>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Robux",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local _, live = liveOf()
+        return "<Text>" .. number(live.robux, 0) .. "</Text> <Muted>R$ / h " .. number(live.rate, 0) .. "</Muted>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Money",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local _, live = liveOf()
+        local earn = tonumber(live.earn) or 0
+        local ads = tonumber(live.ads) or 0
+        local profit = earn - ads
+        local color = profit >= 0 and "Success" or "Error"
+        return "<" .. color .. ">" .. money(profit) .. "</" .. color .. "> <Muted>DevEx " .. money(earn) .. " - ads " .. money(ads) .. "</Muted>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Valuation",
+    Style = "Row",
+    UpdateRate = 3,
+    Update = function()
+        local project = activeProject()
+        if not project then
+            return "<Muted>-</Muted>"
+        end
+        return "<Text>" .. money(project.val or 0) .. "</Text>"
+    end,
+})
+
+AnalyticsBox:CreateStatus({
+    Name = "Update",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        local project = activeProject()
+        if not project then
+            return "<Muted>-</Muted>"
+        end
+        local update = project.update
+        if type(update) ~= "table" then
+            return "<Muted>idle</Muted>"
+        end
+        local done = tonumber(update.done) or 0
+        local need = tonumber(update.need) or 1
+        local percent = math.floor(math.min(done / math.max(need, 1), 1) * 100)
+        local text = tostring(update.type or "update") .. " " .. percent .. "%"
+        if done >= need then
+            return "<Success>" .. text .. " ready</Success>"
+        end
+        return "<Warning>" .. text .. "</Warning>"
+    end,
+})
+
+local AutoUpdate
+AutoUpdate = WorkBox:CreateToggle({
+    Name = "Auto update",
+    Desc = "Starts an update, fills it with work and releases it",
+    Flag = "RobluxAutoUpdate",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            WorkLog:Push("<Muted>Auto update stopped</Muted>")
+            return
+        end
+        WorkLog:Push("<Success>Auto update started</Success>")
+        task.spawn(function()
+            while AutoUpdate.Value do
+                local project = activeProject()
+                if not project then
+                    WorkLog:Push("<Warning>No live project</Warning>")
+                    AutoUpdate:Set(false)
+                    break
+                end
+                local update = project.update
+                if type(update) == "table" then
+                    local done = tonumber(update.done) or 0
+                    local need = tonumber(update.need) or 1
+                    if done < need then
+                        local did = false
+                        for _, activity in ipairs(ACTIVITY_ORDER) do
+                            if not AutoUpdate.Value then
+                                break
+                            end
+                            if runOne(activity) then
+                                did = true
+                            end
+                            task.wait(0.3)
+                        end
+                        if not did then
+                            task.wait(4)
+                        end
+                    else
+                        local released = request("RbxRelease", project.id)
+                        if released.ok then
+                            WorkLog:Push("<Success>Update released</Success>")
+                            task.wait(2)
+                        else
+                            WorkLog:Push("<Warning>" .. tostring(released.err) .. "</Warning>")
+                            task.wait(5)
+                        end
+                    end
+                else
+                    local kind = "content"
+                    if (tonumber(project.bugs) or 0) > 0 then
+                        kind = "bugfix"
+                    elseif (tonumber(project.q) or 100) < 85 then
+                        kind = "feedback"
+                    end
+                    local started = request("RbxUpdate", project.id, kind)
+                    if started.ok then
+                        WorkLog:Push("<Success>Update started: " .. kind .. "</Success>")
+                    else
+                        WorkLog:Push("<Warning>" .. tostring(started.err) .. "</Warning>")
+                    end
+                    task.wait(2)
+                end
+            end
+        end)
+    end,
+})
+
+----- Roblux offers + ads -----
+
+local OffersBox = GrowthPage:CreateGroupbox({ Name = "Offers", Side = "Left" })
+local OfferActivityBox = GrowthPage:CreateGroupbox({ Name = "Offer log", Side = "Left", Collapsed = true })
+local OfferLog = OfferActivityBox:CreateLog({
+    MaxEntries = 120,
+    MaxRows = 4,
+    Timestamps = true,
+    EmptyText = "No offers yet",
+})
+
+local function firstOffer()
+    local project = currentProject()
+    if not project then
+        return nil, nil
+    end
+    local list = project.offers or {}
+    return project, list[1]
+end
+
+local function parseMoney(text)
+    local digits = string.match(tostring(text or ""), "%$([%d,]+)")
+    if not digits then
+        return nil
+    end
+    local value = tonumber((string.gsub(digits, ",", "")))
+    if not value then
+        return nil
+    end
+    return value * 100
+end
+
+local function parsePercent(text)
+    local value = string.match(tostring(text or ""), "(%d+)%%")
+    return tonumber(value)
+end
+
+local function offerSummary(project, offer)
+    local money = nil
+    local percent = nil
+    for _, line in ipairs(offer.terms or {}) do
+        money = money or parseMoney(line)
+        percent = percent or parsePercent(line)
+    end
+    local valuation = tonumber(project.val) or 0
+    local fair = (percent and percent > 0) and (valuation * percent / 100) or nil
+    return money, percent, fair
+end
+
+local function suspicious(offer)
+    local creds = string.lower(tostring(offer.creds or ""))
+    if string.find(creds, "done 3", 1, true) or string.find(creds, "scam", 1, true) then
+        return true
+    end
+    if string.find(creds, "no history", 1, true) then
+        return true
+    end
+    return false
+end
+
+OffersBox:CreateStatus({
+    Name = "Offer",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local project, offer = firstOffer()
+        if not offer then
+            return "<Muted>none</Muted>"
+        end
+        local cash, percent, fair = offerSummary(project, offer)
+        local parts = { tostring(offer.kind or "offer") }
+        if cash then
+            table.insert(parts, money(cash))
+        end
+        if percent then
+            table.insert(parts, percent .. "%")
+        end
+        if cash and fair and fair > 0 then
+            table.insert(parts, string.format("x%.2f", cash / fair))
+        end
+        return "<Text>" .. table.concat(parts, " - ") .. "</Text>"
+    end,
+})
+
+local function research()
+    local project, offer = firstOffer()
+    if not offer then
+        OfferLog:Push("<Muted>No offer to research</Muted>")
+        return
+    end
+    for _, source in ipairs({ "devs", "victor" }) do
+        local result = request("RbxAsk", project.id, offer.oid, source)
+        if result.ok then
+            OfferLog:Push("<Muted>Asked " .. source .. "</Muted>")
+        else
+            OfferLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+        end
+        task.wait(0.4)
+    end
+end
+
+local function decide(accept)
+    local project, offer = firstOffer()
+    if not offer then
+        OfferLog:Push("<Muted>No offer to decide</Muted>")
+        return
+    end
+    local result = request("RbxDecide", project.id, offer.oid, accept)
+    if result.ok then
+        OfferLog:Push(accept and "<Success>Accepted</Success>" or "<Warning>Declined</Warning>")
+    else
+        OfferLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+    end
+end
+
+OffersBox:CreateButtonRow({
+    { Name = "Research", Callback = research },
+    { Name = "Accept", Style = "Primary", Callback = function()
+        decide(true)
+    end },
+    { Name = "Decline", Callback = function()
+        decide(false)
+    end },
+})
+
+local AutoOffers
+AutoOffers = OffersBox:CreateToggle({
+    Name = "Auto offers",
+    Desc = "Checks the offer and takes it only at a fair price",
+    Flag = "RobluxAutoOffers",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            return
+        end
+        task.spawn(function()
+            while AutoOffers.Value do
+                local project, offer = firstOffer()
+                if not offer then
+                    task.wait(10)
+                else
+                    research()
+                    local cash, percent, fair = offerSummary(project, offer)
+                    local ratio = (cash and fair and fair > 0) and (cash / fair) or 0
+                    local bad = suspicious(offer)
+                    if bad or ratio < 1 then
+                        OfferLog:Push(string.format("<Muted>Deal x%.2f%s</Muted>", ratio, bad and ", red flags" or ""))
+                        decide(false)
+                    else
+                        OfferLog:Push(string.format("<Success>Fair deal x%.2f</Success>", ratio))
+                        decide(true)
+                    end
+                    task.wait(3)
+                end
+            end
+        end)
+    end,
+})
+
+local AdsBox = GrowthPage:CreateGroupbox({ Name = "Ads", Side = "Right" })
+
+local adStep = 10000
+
+AdsBox:CreateDropdown({
+    Name = "Ad budget",
+    Options = { "$100", "$1,000", "$10,000" },
+    CurrentOption = "$100",
+    Flag = "RobluxAdStep",
+    Callback = function(value)
+        if value == "$1,000" then
+            adStep = 100000
+        elseif value == "$10,000" then
+            adStep = 1000000
+        else
+            adStep = 10000
+        end
+    end,
+})
+
+AdsBox:CreateDropdown({
+    Name = "Min profit",
+    Options = { "any", "$1,000", "$10,000" },
+    CurrentOption = "any",
+    Flag = "RobluxAdProfit",
+    Callback = function(value)
+        if value == "$1,000" then
+            getgenv().RobluxAdMinProfit = 100000
+        elseif value == "$10,000" then
+            getgenv().RobluxAdMinProfit = 1000000
+        else
+            getgenv().RobluxAdMinProfit = 0
+        end
+    end,
+})
+
+AdsBox:CreateStatus({
+    Name = "Ad pool",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local project = currentProject()
+        if not project then
+            return "<Muted>-</Muted>"
+        end
+        local live = project.live or {}
+        return "<Muted>" .. money(live.adPool or 0) .. " left</Muted>"
+    end,
+})
+
+AdsBox:CreateButton({
+    Name = "Buy ads",
+    Icon = "megaphone",
+    Confirm = true,
+    Callback = function()
+        local project = currentProject()
+        if not project then
+            return
+        end
+        local result = request("RbxAds", project.id, adStep)
+        if result.ok then
+            WorkLog:Push("<Success>Ads bought: " .. money(adStep) .. "</Success>")
+        else
+            WorkLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+        end
+    end,
+})
+
+local AutoAds
+AutoAds = AdsBox:CreateToggle({
+    Name = "Auto ads",
+    Desc = "Buys ads while the game is profitable",
+    Flag = "RobluxAutoAds",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            return
+        end
+        task.spawn(function()
+            while AutoAds.Value do
+                local project = currentProject()
+                if project then
+                    local live = project.live or {}
+                    local profit = (tonumber(live.earn) or 0) - (tonumber(live.ads) or 0)
+                    local pool = tonumber(live.adPool) or 0
+                    if profit > (getgenv().RobluxAdMinProfit or 0) and pool > 0 then
+                        local result = request("RbxAds", project.id, adStep)
+                        if result.ok then
+                            WorkLog:Push("<Success>Auto ads: " .. money(adStep) .. "</Success>")
+                        else
+                            WorkLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+                        end
+                    end
+                end
+                task.wait(20)
+            end
+        end)
+    end,
+})
+
+----- Roblux project switcher -----
+
+local projectIdByLabel = {}
+
+local function projectOptions()
+    local options = {}
+    local list = {}
+    for _, project in pairs((Net.state.rbx or {}).projects or {}) do
+        table.insert(list, project)
+    end
+    table.sort(list, function(first, second)
+        return (first.created or 0) > (second.created or 0)
+    end)
+    local selected = currentProject()
+    local selectedLabel
+    table.clear(projectIdByLabel)
+    for _, project in ipairs(list) do
+        if project.phase ~= "closed" then
+            local title = tostring(project.title or ("project " .. tostring(project.id)))
+            local label = title .. " (" .. tostring(project.phase) .. ")"
+            if projectIdByLabel[label] ~= nil then
+                label ..= " #" .. tostring(project.id)
+            end
+            projectIdByLabel[label] = project.id
+            table.insert(options, label)
+            if selected and selected.id == project.id then
+                selectedLabel = label
+            end
+        end
+    end
+    return options, selectedLabel
+end
+
+local ProjectDrop
+local options, defaultProject = projectOptions()
+ProjectDrop = ProjectsBox:CreateDropdown({
+    Name = "Target project",
+    Options = options,
+    CurrentOption = defaultProject,
+    Flag = "RobluxProject",
+    Callback = function(value)
+        local id = projectIdByLabel[value]
+        if id ~= nil then
+            getgenv().RobluxTarget = id
+        end
+    end,
+})
+
+refreshProjectPicker = function()
+    local fresh, selected = projectOptions()
+    ProjectDrop:SetOptions(fresh, { KeepSelection = false, Silent = true })
+    ProjectDrop:Set(selected, true)
+end
+
+ProjectsBox:CreateButton({
+    Name = "Refresh list",
+    Icon = "refresh-cw",
+    Callback = refreshProjectPicker,
+})
+
+ProjectsBox:CreateStatus({
+    Name = "Selected",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        local project = currentProject()
+        if not project then
+            return "<Muted>none</Muted>"
+        end
+        local ccu = (project.live and tonumber(project.live.ccu)) or 0
+        return string.format("<Text>%s</Text> <Muted>%s - CCU %.0f</Muted>", tostring(project.title), tostring(project.phase), ccu)
+    end,
+})
+
+ProjectsBox:CreateButton({
+    Name = "Work on selected",
+    Icon = "hammer",
+    Callback = function()
+        local project = currentProject()
+        if not project then
+            WorkLog:Push("<Warning>No project selected</Warning>")
+            return
+        end
+        local did = false
+        for _, activity in ipairs(ACTIVITY_ORDER) do
+            if runOne(activity, project) then
+                did = true
+            end
+            task.wait(0.3)
+        end
+        WorkLog:Push(did and "<Success>Work done on " .. tostring(project.title) .. "</Success>" or "<Muted>All activities on cooldown</Muted>")
+    end,
+})
+
+----- Roblux lifecycle -----
+
+local LifeLog = WorkActivityBox:CreateLog({
+    Name = "Lifecycle log",
+    MaxEntries = 100,
+    MaxRows = 4,
+    Timestamps = true,
+    EmptyText = "Idle",
+})
+
+-- The game keeps development progress in project.parts.progress (0..1) and polish in
+-- project.parts.polish (0..100). Publishing unlocks at 50%, 100% is a complete game.
+local function devProgress(project)
+    local parts = (project and project.parts) or {}
+    return tonumber(parts.progress) or tonumber(project and project.progress) or 0
+end
+
+local function devPolish(project)
+    local parts = (project and project.parts) or {}
+    return tonumber(parts.polish) or 0
+end
+
+local publishDefaults = {
+    thumb = "clean",
+    desc = "honest",
+    monet = "fair",
+    timing = "now",
+    ads = 0,
+}
+
+local function deadRatio()
+    return tonumber(getgenv().RobluxDeadRatio) or 0.05
+end
+
+local function deadPeak()
+    return tonumber(getgenv().RobluxDeadPeak) or 200
+end
+
+local function isDead(project)
+    local live = (project and project.live) or {}
+    local ccu = tonumber(live.ccu) or 0
+    local peak = tonumber(live.peak) or 0
+    if peak < deadPeak() then
+        return false
+    end
+    return ccu < peak * deadRatio()
+end
+
+local function publishProject(project)
+    if not project then
+        return
+    end
+    if devProgress(project) < 0.5 then
+        LifeLog:Push("<Warning>Needs 50% to publish</Warning>")
+        return
+    end
+    local payload = {
+        thumb = publishDefaults.thumb,
+        desc = publishDefaults.desc,
+        monet = publishDefaults.monet,
+        timing = publishDefaults.timing,
+        ads = publishDefaults.ads,
+    }
+    local result = request("RbxPublish", project.id, payload)
+    if result.ok then
+        LifeLog:Push("<Success>Published " .. tostring(project.title) .. "</Success>")
+    else
+        LifeLog:Push("<Warning>" .. tostring(result.err) .. "</Warning>")
+    end
+    return result
+end
+
+LifeBox:CreateStatus({
+    Name = "Phase",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local project = currentProject()
+        if not project then
+            return "<Muted>none</Muted>"
+        end
+        if project.phase == "dev" then
+            return string.format("<Warning>dev %.0f%%</Warning> <Muted>polish %.0f%%</Muted>", devProgress(project) * 100, devPolish(project))
+        end
+        local live = project.live or {}
+        return string.format("<Success>%s</Success> <Muted>CCU %.0f</Muted>", tostring(project.phase), tonumber(live.ccu) or 0)
+    end,
+})
+
+LifeBox:CreateButton({
+    Name = "Publish selected",
+    Icon = "upload",
+    Confirm = true,
+    Callback = function()
+        local project = currentProject()
+        publishProject(project)
+    end,
+})
+
+-- The lifecycle is a queue over every open project, not just the selected one: publish what
+-- is finished, develop what is not, release finished updates, retire games that stopped
+-- paying, and open a new one when a slot is free.
+local lifeBad = {}
+local lifeCreatedAt = 0
+
+local function allOpenProjects()
+    local list = {}
+    for _, project in pairs((Net.state.rbx or {}).projects or {}) do
+        if project.phase ~= "closed" then
+            table.insert(list, project)
+        end
+    end
+    table.sort(list, function(first, second)
+        if first.phase ~= second.phase then
+            return first.phase == "dev"
+        end
+        return (first.created or 0) < (second.created or 0)
+    end)
+    return list
+end
+
+local function projectCap()
+    return (RobluxData and tonumber(RobluxData.MAX_PROJECTS)) or 3
+end
+
+local function startProject()
+    if os.clock() - lifeCreatedAt < 20 then
+        return nil
+    end
+    lifeCreatedAt = os.clock()
+    if RobluxAPI and RobluxAPI.applyBest then
+        RobluxAPI.applyBest()
+    end
+    local created = RobluxAPI and RobluxAPI.create and RobluxAPI.create()
+    if created and created.ok then
+        LifeLog:Push("<Success>New project started</Success>")
+        getgenv().RobluxTarget = created.id
+    elseif created then
+        LifeLog:Push("<Warning>" .. tostring(created.err) .. "</Warning>")
+    end
+    return created
+end
+
+local function retireProject(project)
+    local live = project.live or {}
+    local profit = (tonumber(live.earn) or 0) - (tonumber(live.ads) or 0)
+    LifeLog:Push(string.format("<Warning>Retiring %s: %.0f CCU of %.0f peak, profit %s</Warning>", tostring(project.title), tonumber(live.ccu) or 0, tonumber(live.peak) or 0, money(profit)))
+    local closed = request("RbxClose", project.id)
+    if closed.ok then
+        lifeBad[tostring(project.id)] = nil
+        if getgenv().RobluxTarget == project.id then
+            getgenv().RobluxTarget = nil
+            selectedId = nil
+        end
+        return true
+    end
+    LifeLog:Push("<Warning>" .. tostring(closed.err) .. "</Warning>")
+    return false
+end
+
+local AutoLife
+AutoLife = LifeBox:CreateToggle({
+    Name = "Auto lifecycle",
+    Desc = "Creates, develops, publishes, updates and retires games on its own",
+    Flag = "RobluxAutoLife",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            LifeLog:Push("<Muted>Stopped</Muted>")
+            return
+        end
+        LifeLog:Push("<Success>Started</Success>")
+        task.spawn(function()
+            while AutoLife.Value do
+                local list = allOpenProjects()
+                if #list == 0 then
+                    startProject()
+                    task.wait(5)
+                else
+                    local publishReady, develop = nil, nil
+                    for _, project in ipairs(list) do
+                        if project.phase == "dev" then
+                            if devProgress(project) >= 1 then
+                                publishReady = publishReady or project
+                            else
+                                develop = develop or project
+                            end
+                        end
+                    end
+                    if publishReady then
+                        publishProject(publishReady)
+                        task.wait(3)
+                    elseif develop then
+                        local did = false
+                        for _, activity in ipairs(ACTIVITY_ORDER) do
+                            if not AutoLife.Value then
+                                break
+                            end
+                            if runOne(activity, develop) then
+                                did = true
+                            end
+                            task.wait(0.3)
+                        end
+                        if not did then
+                            task.wait(4)
+                        end
+                    else
+                        local handled = false
+                        for _, project in ipairs(list) do
+                            if not AutoLife.Value then
+                                break
+                            end
+                            local update = project.update
+                            if type(update) == "table" and (tonumber(update.done) or 0) >= (tonumber(update.need) or 1) then
+                                local released = request("RbxRelease", project.id)
+                                if released.ok then
+                                    LifeLog:Push("<Success>Update released: " .. tostring(project.title) .. "</Success>")
+                                else
+                                    LifeLog:Push("<Warning>" .. tostring(released.err) .. "</Warning>")
+                                end
+                                handled = true
+                                task.wait(2)
+                            end
+                        end
+                        if not handled then
+                            local retired = false
+                            for _, project in ipairs(list) do
+                                if not AutoLife.Value then
+                                    break
+                                end
+                                local live = project.live or {}
+                                local ccu = tonumber(live.ccu) or 0
+                                local peak = tonumber(live.peak) or 0
+                                local profit = (tonumber(live.earn) or 0) - (tonumber(live.ads) or 0)
+                                local key = tostring(project.id)
+                                -- Dying: traffic collapsed and it no longer pays, or it simply
+                                -- stops paying (ads outrun income). Three checks in a row, so a
+                                -- short dip does not kill a game.
+                                local dying = (isDead(project) and profit <= 0) or profit < 0
+                                lifeBad[key] = dying and ((lifeBad[key] or 0) + 1) or 0
+                                if (lifeBad[key] or 0) >= 3 then
+                                    retired = retireProject(project) or retired
+                                end
+                            end
+                            if retired then
+                                task.wait(2)
+                                if #allOpenProjects() < projectCap() then
+                                    startProject()
+                                end
+                            else
+                                -- nothing to publish or retire: keep every slot busy
+                                if #list < projectCap() then
+                                    startProject()
+                                end
+                                task.wait(10)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end,
+})
+
+getgenv().RobluxWork = {
+    runOne = runOne,
+    heuristic = heuristic,
+    solveScript = solveScript,
+    solveDebug = solveDebug,
+    solveBuild = solveBuild,
+    solveUi = solveUi,
+    solveAnim = solveAnim,
+    stats = stats,
+    cache = solved,
+    devProgress = devProgress,
+    isDead = isDead,
+    publish = publishProject,
+    openProjects = openProjects,
+}
+
+getgenv().RobluxUI = {
+    AutoLife = AutoLife,
+    AutoWork = AutoWork,
+    AutoUpdate = AutoUpdate,
+    AutoOffers = AutoOffers,
+    AutoAds = AutoAds,
+    ProjectDrop = ProjectDrop,
+    MultiWork = MultiWork,
+}
+
+    RobluxAPI = {
+        selection = selection,
+        ranking = ranking,
+        applyBest = applyBest,
+        fitOf = fitOf,
+        trend = genreTrend,
+        create = createProject,
+        title = currentTitle,
+    }
+end
+
+----- TradeX tab -----
+
+local MarketData = nil
+do
+    local module = Shared:FindFirstChild("MarketData")
+    if module then
+        local loaded, result = pcall(require, module)
+        if loaded and type(result) == "table" then
+            MarketData = result
+        end
+    end
+end
+
+local TradeTab = Window:CreateTab({ Name = "TradeX", Icon = "trending-up" })
+local TradePage = TradeTab:CreateSubTab({ Name = "Trade" })
+local AutoTradePage = TradeTab:CreateSubTab({ Name = "Auto trader" })
+local NewsPage = TradeTab:CreateSubTab({ Name = "News" })
+
+local MarketBox = TradePage:CreateGroupbox({ Name = "Market", Side = "Left" })
+local OrdersBox = TradePage:CreateGroupbox({ Name = "Orders and alerts", Side = "Left", Collapsed = true })
+local PortfolioBox = TradePage:CreateGroupbox({ Name = "Portfolio", Side = "Right" })
+local MarketActivityBox = TradePage:CreateGroupbox({ Name = "Activity", Side = "Right" })
+local AutoBox = AutoTradePage:CreateGroupbox({ Name = "Auto trader", Side = "Left" })
+local LimitsBox = AutoTradePage:CreateGroupbox({ Name = "Trade limits", Side = "Left" })
+local SignalBox = AutoTradePage:CreateGroupbox({ Name = "Status", Side = "Right" })
+local TradeActivityBox = AutoTradePage:CreateGroupbox({ Name = "Activity", Side = "Right" })
+
+local marketLog = MarketActivityBox:CreateLog({
+    Name = "Market activity",
+    MaxEntries = 100,
+    MaxRows = 4,
+    Timestamps = true,
+    EmptyText = "No market activity yet",
+})
+
+local tradeLog
+
+local function logPush(text)
+    if tradeLog then
+        tradeLog:Push(text)
+    end
+end
+
+local symbolOptions = {}
+local symbolByLabel = {}
+do
+    for _, asset in ipairs((MarketData and MarketData.assets) or {}) do
+        local label = tostring(asset.sym) .. " - " .. tostring(asset.name)
+        table.insert(symbolOptions, label)
+        symbolByLabel[label] = tostring(asset.sym)
+    end
+    if #symbolOptions == 0 then
+        local keys = {}
+        for sym in pairs(((Net.state.mkt or {}).px) or {}) do
+            table.insert(keys, tostring(sym))
+        end
+        table.sort(keys)
+        for _, sym in ipairs(keys) do
+            table.insert(symbolOptions, sym)
+            symbolByLabel[sym] = sym
+        end
+    end
+    if #symbolOptions == 0 then
+        table.insert(symbolOptions, "MEGA")
+        symbolByLabel.MEGA = "MEGA"
+    end
+end
+
+local symbolOrder = {}
+for _, label in ipairs(symbolOptions) do
+    table.insert(symbolOrder, symbolByLabel[label])
+end
+
+local currentSym = symbolByLabel[symbolOptions[1]]
+local units = 10
+local limitPrice = 0
+local takeProfit = 8
+local stopLoss = 5
+local perTrade = 200000
+local maxPositions = 4
+local entryScore = 6
+local lastQuote = nil
+
+local function marketOf(sym)
+    return (((Net.state.mkt or {}).px) or {})[sym]
+end
+
+local function feeOf(category)
+    local entry = MarketData and MarketData.catById and MarketData.catById[category]
+    return (entry and tonumber(entry.fee)) or 0.01
+end
+
+local function priceText(value)
+    local price = tonumber(value) or 0
+    if price >= 1000 then
+        return string.format("$%.0f", price)
+    elseif price >= 1 then
+        return string.format("$%.2f", price)
+    elseif price >= 0.01 then
+        return string.format("$%.4f", price)
+    end
+    return string.format("$%.6f", price)
+end
+
+local function changeText(change)
+    local percent = (tonumber(change) or 0) * 100
+    local tone = percent >= 0 and "Success" or "Error"
+    return "<" .. tone .. ">" .. string.format("%+.2f%%", percent) .. "</" .. tone .. ">"
+end
+
+local function positions()
+    return ((Net.state.trade or {}).pos) or {}
+end
+
+local function openCount()
+    local count = 0
+    for _ in pairs(positions()) do
+        count += 1
+    end
+    return count
+end
+
+local function equityCents()
+    local total = tonumber((Net.state.core or {}).cash) or 0
+    for sym, position in pairs(positions()) do
+        local asset = marketOf(sym)
+        if asset then
+            total += (tonumber(position.q) or 0) * (tonumber(asset.p) or 0) * 100
+        end
+    end
+    return total
+end
+
+local function setInputText(input, text)
+    if input and type(input.Set) == "function" then
+        pcall(input.Set, input, tostring(text))
+    end
+end
+
+-- Same list the BrainrotTok "Trending" tab shows: state.trends.active. The game states
+-- that live trends move TradeX prices, so they belong in the signal. Numbers come from
+-- Shared.TrendData (asset / assetCat / vol), the active entry only carries id and timing.
+local function trendInfo(sym, category)
+    local bias, volatility, names = 0, 0, {}
+    local minutes = tonumber((Net.state.core or {}).minutes) or 0
+    local dominant, dominantPhase = 0, 1
+    for _, trend in ipairs((((Net.state.trends or {}).active) or {})) do
+        local definition = TrendData and TrendData.byId and TrendData.byId[trend.id]
+        local effects = definition and definition.effects
+        if effects then
+            local lift = 0
+            if effects.asset and effects.asset[sym] then
+                lift += tonumber(effects.asset[sym]) or 0
+            end
+            if effects.assetCat and effects.assetCat[category] then
+                lift += tonumber(effects.assetCat[category]) or 0
+            end
+            local extraVol = 0
+            if effects.vol and effects.vol[category] then
+                extraVol = tonumber(effects.vol[category]) or 0
+            end
+            if lift ~= 0 or extraVol ~= 0 then
+                local started = tonumber(trend.start) or minutes
+                local ends = tonumber(trend.ends) or (minutes + 1)
+                local phase = 0
+                if ends > started then
+                    phase = math.clamp((minutes - started) / (ends - started), 0, 1)
+                end
+                local weight = 0.3 + 0.7 * (1 - phase)
+                bias += lift * weight
+                volatility += extraVol * weight
+                if math.abs(lift) > math.abs(dominant) then
+                    dominant = lift
+                    dominantPhase = phase
+                end
+                table.insert(names, tostring(trend.name or trend.id))
+            end
+        end
+    end
+    return bias, volatility, names, dominantPhase
+end
+
+local exitBlock = {}
+
+local function minutesNow()
+    return tonumber((Net.state.core or {}).minutes) or 0
+end
+
+local function buyUnits(sym, count, log)
+    log = log or tradeLog
+    count = math.floor(tonumber(count) or 0)
+    if count < 1 then
+        log:Push("<Warning>Units must be at least 1</Warning>")
+        return false
+    end
+    local quote = request("TxQuote", sym, "buy", count)
+    if not quote.ok then
+        log:Push("<Warning>" .. tostring(quote.err) .. "</Warning>")
+        return false
+    end
+    local bought = request("TxBuy", sym, count)
+    if not bought.ok then
+        log:Push("<Warning>" .. tostring(bought.err) .. "</Warning>")
+        return false
+    end
+    if log == marketLog then
+        lastQuote = { symbol = sym, units = count, data = quote }
+    end
+    log:Push(string.format("<Success>Bought %d %s</Success> <Muted>avg %s, fee %s</Muted>", count, tostring(sym), priceText(quote.px), money(quote.fee or 0)))
+    return true
+end
+
+local function sellAll(sym, log)
+    log = log or tradeLog
+    local position = positions()[sym]
+    if not position then
+        log:Push("<Muted>No position in " .. tostring(sym) .. "</Muted>")
+        return false
+    end
+    local count = math.floor(tonumber(position.q) or 0)
+    if count < 1 then
+        return false
+    end
+    local sold = request("TxSell", sym, count)
+    if not sold.ok then
+        log:Push("<Warning>" .. tostring(sold.err) .. "</Warning>")
+        return false
+    end
+    local pnl = tonumber(sold.pnl) or 0
+    local tone = pnl >= 0 and "Success" or "Error"
+    exitBlock[sym] = minutesNow()
+    log:Push(string.format("<%s>Sold %d %s: %s</%s>", tone, count, tostring(sym), money(pnl), tone))
+    return true
+end
+
+local function maxUnits(sym)
+    local asset = marketOf(sym)
+    if not asset then
+        return 0
+    end
+    local cash = tonumber((Net.state.core or {}).cash) or 0
+    local price = tonumber(asset.p) or 0
+    if price <= 0 then
+        return 0
+    end
+    local count = math.floor(cash / 100 / (price * (1 + feeOf(asset.cat)) * 1.01))
+    if count < 1 then
+        return 0
+    end
+    for _ = 1, 6 do
+        local quote = request("TxQuote", sym, "buy", count)
+        if not (quote.ok and (((quote.total or 0) > cash) or ((quote.impact or 0) > 0.02))) then
+            break
+        end
+        count = math.floor(count * (((quote.impact or 0) > 0.02) and 0.6 or 0.85))
+        if count < 1 then
+            return 0
+        end
+    end
+    return count
+end
+
+local function emaOf(values, period)
+    local factor = 2 / (period + 1)
+    local result = values[1]
+    for index = 2, #values do
+        result = values[index] * factor + result * (1 - factor)
+    end
+    return result
+end
+
+-- News is the same list the TradeX "News" tab shows, newest first, stamped in game minutes.
+-- An item counts for 600 game minutes (~5 real minutes) and fades with age.
+local function newsScore(sym)
+    local minutes = tonumber((Net.state.core or {}).minutes) or 0
+    local score = 0
+    for index, item in ipairs(((Net.state.mkt or {}).news) or {}) do
+        if index > 30 then
+            break
+        end
+        if item.s == sym then
+            local stamp = tonumber(item.m) or minutes
+            local age = math.max(0, minutes - stamp)
+            local fresh = math.clamp(1 - age / 600, 0, 1)
+            score += (tonumber(item.x) or 0) * fresh
+        end
+    end
+    return score
+end
+
+local function signalOf(sym)
+    local chart = request("TxChart", sym)
+    if not (chart.ok and type(chart.c) == "table" and #chart.c >= 8) then
+        return nil
+    end
+    local closes = {}
+    for _, candle in ipairs(chart.c) do
+        local close = tonumber(candle[4])
+        if close and close > 0 then
+            table.insert(closes, close)
+        end
+    end
+    if #closes < 8 then
+        return nil
+    end
+    local fast = emaOf(closes, 5)
+    local slow = emaOf(closes, 10)
+    local last = closes[#closes]
+    local past = closes[math.max(1, #closes - 5)]
+    local momentum = past > 0 and (last / past - 1) or 0
+    local asset = marketOf(sym)
+    local category = (asset and asset.cat) or "stock"
+    local bias, volatility = trendInfo(sym, category)
+    local news = newsScore(sym)
+    local score = ((fast / slow) - 1) * 1000 + momentum * 100 + news * 4 + bias * 60
+    return score, last, momentum, bias, volatility
+end
+
+-- Measured on live data: candles move ~2.1% on average, but the lag-1 autocorrelation is
+-- only +0.067, so following a candle is worth ~0.02% while a round trip costs 1-2% in fees
+-- and impact. Trading candle noise is therefore a losing game by construction; the only
+-- real edge is a live trend, which the game applies to prices while it lasts.
+local strategy = "trend"
+
+local scan = {}
+local scanIndex = 1
+
+local function scanOne(sym)
+    local score, _, momentum, bias, volatility = signalOf(sym)
+    if not score then
+        return
+    end
+    local asset = marketOf(sym)
+    local _, _, names, phase = trendInfo(sym, (asset and asset.cat) or "stock")
+    scan[sym] = {
+        score = score,
+        momentum = momentum or 0,
+        bias = bias or 0,
+        volatility = volatility or 0,
+        names = names,
+        phase = phase,
+        news = newsScore(sym),
+    }
+end
+
+local function scanSome(count)
+    for _ = 1, count do
+        local sym = symbolOrder[scanIndex]
+        scanIndex = (scanIndex % #symbolOrder) + 1
+        scanOne(sym)
+    end
+end
+
+local function eligible(entry)
+    if strategy == "trend" then
+        return entry.bias >= 0.05 and entry.phase <= 0.7
+    elseif strategy == "news" then
+        return entry.news >= 0.2
+    end
+    return entry.score >= entryScore
+end
+
+local function bestScan(onlyEligible)
+    local bestSym, bestScore = nil, -math.huge
+    for sym, entry in pairs(scan) do
+        local score = type(entry) == "table" and entry.score or tonumber(entry) or 0
+        if score > bestScore and (not onlyEligible or (type(entry) == "table" and eligible(entry))) then
+            bestSym, bestScore = sym, score
+        end
+    end
+    return bestSym, bestScore
+end
+
+local SymbolDrop
+SymbolDrop = MarketBox:CreateDropdown({
+    Name = "Symbol",
+    Options = symbolOptions,
+    CurrentOption = symbolOptions[1],
+    Flag = "TradexSymbol",
+    Callback = function(value)
+        currentSym = symbolByLabel[value] or currentSym
+    end,
+})
+
+MarketBox:CreateStatus({
+    Name = "Price",
+    Style = "Row",
+    Pin = true,
+    UpdateRate = 1,
+    Update = function()
+        local asset = marketOf(currentSym)
+        if not asset then
+            return "<Muted>no market</Muted>"
+        end
+        return "<Text>" .. priceText(asset.p) .. "</Text> " .. changeText(asset.chg)
+    end,
+})
+
+MarketBox:CreateStatus({
+    Name = "Position",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        local position = positions()[currentSym]
+        if not position then
+            return "<Muted>none</Muted>"
+        end
+        local asset = marketOf(currentSym)
+        local count = tonumber(position.q) or 0
+        local cost = tonumber(position.cost) or 0
+        local value = asset and (count * (tonumber(asset.p) or 0) * 100) or 0
+        local pnl = cost > 0 and ((value - cost) / cost * 100) or 0
+        local tone = pnl >= 0 and "Success" or "Error"
+        return string.format("<Text>%d units</Text> <Muted>cost %s</Muted> <%s>%+.1f%%</%s>", count, money(cost), tone, pnl, tone)
+    end,
+})
+
+local unitsInput
+unitsInput = MarketBox:CreateInput({
+    Name = "Units",
+    PlaceholderText = "10",
+    Flag = "TradexUnits",
+    Callback = function(text)
+        local parsed = tonumber((tostring(text or ""):gsub("[,%s]", "")))
+        if parsed and parsed >= 1 then
+            units = math.floor(parsed)
+        end
+    end,
+})
+
+MarketBox:CreateButton({
+    Name = "Buy",
+    Icon = "shopping-cart",
+    Style = "Primary",
+    Confirm = true,
+    Callback = function()
+        buyUnits(currentSym, units, marketLog)
+    end,
+})
+
+MarketBox:CreateButton({
+    Name = "Sell position",
+    Desc = "Sell all units of the selected asset",
+    Icon = "trending-down",
+    Confirm = true,
+    Callback = function()
+        sellAll(currentSym, marketLog)
+    end,
+})
+
+MarketBox:CreateButtonRow({
+    {
+        Name = "Max",
+        Callback = function()
+            local count = maxUnits(currentSym)
+            if count >= 1 then
+                units = count
+                setInputText(unitsInput, count)
+                marketLog:Push("<Muted>Max " .. tostring(count) .. " units</Muted>")
+            else
+                marketLog:Push("<Warning>Cannot afford a unit</Warning>")
+            end
+        end,
+    },
+    {
+        Name = "Quote",
+        Callback = function()
+            local symbol, count = currentSym, units
+            local quote = request("TxQuote", symbol, "buy", count)
+            if quote.ok then
+                lastQuote = { symbol = symbol, units = count, data = quote }
+                marketLog:Push(string.format("<Muted>%d %s: %s, fee %s</Muted>", count, tostring(symbol), money(quote.total or 0), money(quote.fee or 0)))
+            else
+                marketLog:Push("<Warning>" .. tostring(quote.err) .. "</Warning>")
+            end
+        end,
+    },
+    {
+        Name = "Watch",
+        Callback = function()
+            local watched = request("TxWatch", currentSym)
+            marketLog:Push(watched.ok and ("<Muted>Watching " .. tostring(currentSym) .. "</Muted>") or ("<Warning>" .. tostring(watched.err) .. "</Warning>"))
+        end,
+    },
+})
+
+MarketBox:CreateStatus({
+    Name = "Quote",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        if not lastQuote or lastQuote.symbol ~= currentSym or lastQuote.units ~= units then
+            return "<Muted>press Quote or trade</Muted>"
+        end
+        local quote = lastQuote.data
+        local impact = (tonumber(quote.impact) or 0) * 100
+        return string.format("<Muted>avg %s - fee %s - impact %.2f%%</Muted>", priceText(quote.px), money(quote.fee or 0), impact)
+    end,
+})
+
+MarketBox:CreateStatus({
+    Name = "Trading",
+    Style = "Row",
+    UpdateRate = 3,
+    Update = function()
+        local level = tonumber((((Net.state.core or {}).skills) or {}).trading) or 0
+        return string.format("<Muted>level %d</Muted>", level)
+    end,
+})
+
+MarketBox:CreateStatus({
+    Name = "Trend",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local asset = marketOf(currentSym)
+        if not asset then
+            return "<Muted>-</Muted>"
+        end
+        local bias, volatility, names = trendInfo(currentSym, asset.cat)
+        if #names == 0 then
+            return "<Muted>no trend</Muted>"
+        end
+        local tone = bias >= 0 and "Success" or "Error"
+        local text = string.format("<%s>%+.0f%%</%s> <Muted>%s", tone, bias * 100, table.concat(names, ", "))
+        if volatility > 0 then
+            text ..= string.format(", vol +%.0f%%", volatility * 100)
+        end
+        return text .. "</Muted>"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Equity",
+    Style = "Row",
+    Pin = true,
+    UpdateRate = 1,
+    Update = function()
+        return "<Text>" .. money(equityCents()) .. "</Text>"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Cash",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        return "<Muted>" .. money(tonumber((Net.state.core or {}).cash) or 0) .. "</Muted>"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Realized",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        local stats = (Net.state.trade or {}).stats or {}
+        local realized = tonumber(stats.realized) or 0
+        local tone = realized >= 0 and "Success" or "Error"
+        return "<" .. tone .. ">" .. money(realized) .. "</" .. tone .. ">"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Win rate",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local stats = (Net.state.trade or {}).stats or {}
+        local wins = tonumber(stats.wins) or 0
+        local losses = tonumber(stats.losses) or 0
+        local total = wins + losses
+        if total == 0 then
+            return "<Muted>no closed trades</Muted>"
+        end
+        return string.format("<Text>%.0f%%</Text> <Muted>%dW / %dL</Muted>", wins / total * 100, wins, losses)
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Fees",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local stats = (Net.state.trade or {}).stats or {}
+        return "<Muted>" .. money(tonumber(stats.fees) or 0) .. " paid</Muted>"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Best trade",
+    Style = "Row",
+    UpdateRate = 3,
+    Update = function()
+        local stats = (Net.state.trade or {}).stats or {}
+        local best = tonumber(stats.best) or 0
+        local worst = tonumber(stats.worst) or 0
+        return "<Success>" .. money(best) .. "</Success> <Muted>worst " .. money(worst) .. "</Muted>"
+    end,
+})
+
+PortfolioBox:CreateStatus({
+    Name = "Holdings",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local list = {}
+        for sym, position in pairs(positions()) do
+            table.insert(list, string.format("%s %d", tostring(sym), tonumber(position.q) or 0))
+        end
+        table.sort(list)
+        if #list == 0 then
+            return "<Muted>flat</Muted>"
+        end
+        return "<Text>" .. table.concat(list, ", ") .. "</Text>"
+    end,
+})
+
+local limitInput
+limitInput = OrdersBox:CreateInput({
+    Name = "Limit price",
+    PlaceholderText = "25.00",
+    Flag = "TradexLimit",
+    Callback = function(text)
+        local parsed = tonumber((tostring(text or ""):gsub("[$,%s]", "")))
+        if parsed and parsed > 0 then
+            limitPrice = parsed
+        end
+    end,
+})
+
+local ordersLog
+
+OrdersBox:CreateStatus({
+    Name = "Open",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local orders = 0
+        for _ in pairs(((Net.state.trade or {}).orders) or {}) do
+            orders += 1
+        end
+        local alerts = 0
+        for _ in pairs(((Net.state.trade or {}).alerts) or {}) do
+            alerts += 1
+        end
+        return string.format("<Muted>%d orders - %d alerts</Muted>", orders, alerts)
+    end,
+})
+
+local function placeLimit(side)
+    if limitPrice <= 0 then
+        ordersLog:Push("<Warning>Enter a limit price</Warning>")
+        return
+    end
+    local placed = request("TxOrder", currentSym, side, units, limitPrice)
+    if placed.ok then
+        ordersLog:Push(string.format("<Success>%s limit %d %s @ %s</Success>", side, units, tostring(currentSym), priceText(limitPrice)))
+    else
+        ordersLog:Push("<Warning>" .. tostring(placed.err) .. "</Warning>")
+    end
+end
+
+OrdersBox:CreateButtonRow({
+    {
+        Name = "Buy limit",
+        Callback = function()
+            placeLimit("buy")
+        end,
+    },
+    {
+        Name = "Sell limit",
+        Callback = function()
+            placeLimit("sell")
+        end,
+    },
+})
+
+OrdersBox:CreateButtonRow({
+    {
+        Name = "Set alert",
+        Callback = function()
+            if limitPrice <= 0 then
+                ordersLog:Push("<Warning>Enter a price</Warning>")
+                return
+            end
+            local alert = request("TxAlert", currentSym, "above", limitPrice)
+            ordersLog:Push(alert.ok and ("<Success>Alert " .. tostring(currentSym) .. " above " .. priceText(limitPrice) .. "</Success>") or ("<Warning>" .. tostring(alert.err) .. "</Warning>"))
+        end,
+    },
+    {
+        Name = "Cancel orders",
+        Callback = function()
+            local cancelled = 0
+            for _, order in pairs(((Net.state.trade or {}).orders) or {}) do
+                if order.id then
+                    request("TxCancel", order.id)
+                    cancelled += 1
+                end
+            end
+            ordersLog:Push(cancelled > 0 and ("<Muted>Cancelled " .. cancelled .. "</Muted>") or "<Muted>No open orders</Muted>")
+        end,
+    },
+})
+
+ordersLog = OrdersBox:CreateLog({
+    Name = "Order activity",
+    MaxEntries = 80,
+    MaxRows = 4,
+    Timestamps = true,
+    EmptyText = "No orders yet",
+})
+
+local newsLog
+local function fillNews()
+    newsLog:Clear()
+    local items = ((Net.state.mkt or {}).news) or {}
+    for index, item in ipairs(items) do
+        if index > 16 then
+            break
+        end
+        local sentiment = tonumber(item.x) or 0
+        local tone = sentiment > 0 and "Success" or (sentiment < 0 and "Error" or "Muted")
+        newsLog:Push(string.format("<%s>%s</%s> <Muted>%s</Muted>", tone, tostring(item.t), tone, tostring(item.s)))
+    end
+end
+
+NewsPage:CreateButton({
+    Name = "Refresh news",
+    Icon = "refresh-cw",
+    Callback = fillNews,
+})
+
+newsLog = NewsPage:CreateLog({
+    Name = "Headlines",
+    MaxEntries = 60,
+    MaxRows = 6,
+    Timestamps = false,
+    EmptyText = "No headlines yet",
+})
+fillNews()
+
+local dryRun = true
+local paper = {}
+local paperRealized = 0
+local function recentlySold(sym)
+    local blockedAt = exitBlock[sym]
+    return blockedAt ~= nil and (minutesNow() - blockedAt) < 60
+end
+
+AutoBox:CreateDropdown({
+    Name = "Strategy",
+    Options = { "Trend rider", "Momentum", "News" },
+    CurrentOption = "Trend rider",
+    Flag = "TradexStrategy",
+    Callback = function(value)
+        if value == "Momentum" then
+            strategy = "momentum"
+        elseif value == "News" then
+            strategy = "news"
+        else
+            strategy = "trend"
+        end
+    end,
+})
+
+AutoBox:CreateToggle({
+    Name = "Dry run",
+    Desc = "Only logs what it would do, no money spent",
+    Flag = "TradexDry",
+    CurrentValue = true,
+    Callback = function(on)
+        dryRun = on
+        logPush(on and "<Muted>Dry run on</Muted>" or "<Warning>Dry run off: using in-game cash</Warning>")
+    end,
+})
+
+local AutoTrade
+AutoTrade = AutoBox:CreateToggle({
+    Name = "Auto trade",
+    Desc = "Follows the strongest trend, takes profit and stops the loss",
+    Flag = "TradexAuto",
+    CurrentValue = false,
+    Callback = function(on)
+        if not on then
+            logPush("<Muted>Stopped</Muted>")
+            return
+        end
+        logPush(dryRun and "<Success>Started (dry run)</Success>" or "<Warning>Started with in-game cash</Warning>")
+        task.spawn(function()
+            while AutoTrade.Value do
+                for sym, position in pairs(positions()) do
+                    if not AutoTrade.Value or dryRun then
+                        break
+                    end
+                    local asset = marketOf(sym)
+                    local cost = tonumber(position.cost) or 0
+                    local count = tonumber(position.q) or 0
+                    if asset and cost > 0 and count > 0 then
+                        local value = count * (tonumber(asset.p) or 0) * 100
+                        local pnl = (value - cost) / cost * 100
+                        if pnl >= takeProfit or pnl <= -stopLoss then
+                            sellAll(sym)
+                        elseif strategy == "trend" then
+                            local bias = select(1, trendInfo(sym, asset.cat or "stock"))
+                            if bias < 0.02 then
+                                logPush("<Muted>Trend gone: " .. tostring(sym) .. "</Muted>")
+                                sellAll(sym)
+                            end
+                        end
+                    end
+                end
+                for sym, entry in pairs(paper) do
+                    if not AutoTrade.Value then
+                        break
+                    end
+                    local asset = marketOf(sym)
+                    local price = asset and tonumber(asset.p) or 0
+                    if price > 0 and entry.px > 0 then
+                        local pnl = (price - entry.px) / entry.px * 100
+                        if pnl >= takeProfit or pnl <= -stopLoss then
+                            paperRealized += (price - entry.px) * entry.qty * 100
+                            paper[sym] = nil
+                            exitBlock[sym] = minutesNow()
+                            local tone = pnl >= 0 and "Success" or "Error"
+                            logPush(string.format("<%s>Paper sold %s %.1f%%</%s>", tone, tostring(sym), pnl, tone))
+                        elseif strategy == "trend" then
+                            local bias = select(1, trendInfo(sym, (asset and asset.cat) or "stock"))
+                            if bias < 0.02 then
+                                paperRealized += (price - entry.px) * entry.qty * 100
+                                paper[sym] = nil
+                                exitBlock[sym] = minutesNow()
+                                logPush(string.format("<Muted>Paper exit %s, trend gone</Muted>", tostring(sym)))
+                            end
+                        end
+                    end
+                end
+                scanSome(3)
+                local held = openCount() + (function()
+                    local count = 0
+                    for _ in pairs(paper) do
+                        count += 1
+                    end
+                    return count
+                end)()
+                if AutoTrade.Value and held < maxPositions then
+                    local bestSym, bestScore = nil, -math.huge
+                    for sym, entry in pairs(scan) do
+                        if type(entry) == "table" and entry.score > bestScore and eligible(entry)
+                            and not positions()[sym] and not paper[sym] and not recentlySold(sym) then
+                            bestSym, bestScore = sym, entry.score
+                        end
+                    end
+                    if bestSym then
+                        local asset = marketOf(bestSym)
+                        local cash = tonumber((Net.state.core or {}).cash) or 0
+                        local budget = math.min(perTrade, math.floor(cash * 0.15))
+                        local record = scan[bestSym] or {}
+                        -- A hot trend makes the same score riskier: demand more edge.
+                        if asset and budget >= 5000 and bestScore >= entryScore * (1 + (record.volatility or 0)) then
+                            local price = tonumber(asset.p) or 0
+                            local wanted = math.floor(budget / 100 / (price * (1 + feeOf(asset.cat)) * 1.01))
+                            if wanted >= 1 then
+                                local context = (record.names and #record.names > 0) and (", " .. table.concat(record.names, "/")) or ""
+                                if dryRun then
+                                    paper[bestSym] = { qty = wanted, px = price }
+                                    logPush(string.format("<Muted>Paper buy %d %s at %s (score %.1f%s)</Muted>", wanted, bestSym, priceText(price), bestScore, context))
+                                else
+                                    logPush(string.format("<Muted>Signal %.1f%s</Muted>", bestScore, context))
+                                    buyUnits(bestSym, wanted)
+                                end
+                            end
+                        end
+                    end
+                end
+                task.wait(2)
+            end
+        end)
+    end,
+})
+
+SignalBox:CreateStatus({
+    Name = "Trading mode",
+    Style = "Row",
+    Update = function()
+        if not AutoTrade.Value then
+            return "<Muted>Idle</Muted>"
+        end
+        return dryRun and "<Success>Dry run</Success>" or "<Warning>In-game cash</Warning>"
+    end,
+})
+
+SignalBox:CreateStatus({
+    Name = "Paper",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local open = 0
+        local floating = 0
+        for sym, entry in pairs(paper) do
+            open += 1
+            local asset = marketOf(sym)
+            if asset then
+                floating += ((tonumber(asset.p) or 0) - entry.px) * entry.qty * 100
+            end
+        end
+        local tone = paperRealized >= 0 and "Success" or "Error"
+        return string.format("<%s>%s</%s> <Muted>%d open, float %s</Muted>", tone, money(paperRealized), tone, open, money(floating))
+    end,
+})
+
+LimitsBox:CreateInput({
+    Name = "Take profit",
+    PlaceholderText = "8",
+    Flag = "TradexTp",
+    Callback = function(text)
+        local parsed = tonumber(tostring(text or ""))
+        if parsed and parsed > 0 then
+            takeProfit = parsed
+        end
+    end,
+})
+
+LimitsBox:CreateInput({
+    Name = "Stop loss",
+    PlaceholderText = "5",
+    Flag = "TradexSl",
+    Callback = function(text)
+        local parsed = tonumber(tostring(text or ""))
+        if parsed and parsed > 0 then
+            stopLoss = parsed
+        end
+    end,
+})
+
+LimitsBox:CreateInput({
+    Name = "Per trade",
+    PlaceholderText = "2000",
+    Flag = "TradexSize",
+    Callback = function(text)
+        local parsed = tonumber((tostring(text or ""):gsub("[,%s]", "")))
+        if parsed and parsed >= 10 then
+            perTrade = math.floor(parsed) * 100
+        end
+    end,
+})
+
+SignalBox:CreateStatus({
+    Name = "Held",
+    Style = "Row",
+    UpdateRate = 1,
+    Update = function()
+        return string.format("<Text>%d / %d</Text> <Muted>equity %s</Muted>", openCount(), maxPositions, money(equityCents()))
+    end,
+})
+
+SignalBox:CreateStatus({
+    Name = "Best signal",
+    Style = "Row",
+    UpdateRate = 2,
+    Update = function()
+        local sym, score = bestScan()
+        if not sym then
+            return "<Muted>scanning</Muted>"
+        end
+        local tone = score >= entryScore and "Success" or (score < 0 and "Error" or "Muted")
+        return string.format("<%s>%s %.1f</%s>", tone, tostring(sym), score, tone)
+    end,
+})
+
+AutoBox:CreateButtonRow({
+    {
+        Name = "Scan all",
+        Callback = function()
+            for sym in pairs(scan) do
+                scan[sym] = nil
+            end
+            for _, sym in ipairs(symbolOrder) do
+                scanOne(sym)
+            end
+            logPush("<Muted>Scan done</Muted>")
+        end,
+    },
+    {
+        Name = "Sell all positions",
+        Style = "Danger",
+        Callback = function()
+            Window:Confirm({
+                Title = "Sell all positions?",
+                Content = "This sells every open position in TradeX.",
+                ConfirmText = "Sell all positions",
+                Callback = function()
+                    for sym in pairs(positions()) do
+                        sellAll(sym)
+                    end
+                end,
+            })
+        end,
+    },
+})
+
+tradeLog = TradeActivityBox:CreateLog({
+    Name = "Trade activity",
+    MaxEntries = 150,
+    MaxRows = 5,
+    Timestamps = true,
+    EmptyText = "No trades yet",
+})
+
+getgenv().Tradex = {
+    buy = buyUnits,
+    sell = sellAll,
+    max = maxUnits,
+    signal = signalOf,
+    trend = trendInfo,
+    news = newsScore,
+    scan = scan,
+    symbol = function(value)
+        if value then
+            currentSym = tostring(value)
+        end
+        return currentSym
+    end,
+    units = function(value)
+        if value then
+            units = math.floor(tonumber(value) or units)
+            setInputText(unitsInput, units)
+        end
+        return units
+    end,
+    limits = function(tp, sl, size)
+        takeProfit = tonumber(tp) or takeProfit
+        stopLoss = tonumber(sl) or stopLoss
+        if size then
+            perTrade = math.floor(tonumber(size) * 100)
+        end
+        return takeProfit, stopLoss, perTrade
+    end,
+    positions = positions,
+    equity = equityCents,
+    dry = function(value)
+        if value ~= nil then
+            dryRun = value and true or false
+        end
+        return dryRun
+    end,
+    auto = function(value)
+        if value ~= nil then
+            AutoTrade:Set(value and true or false)
+        end
+        return AutoTrade.Value
+    end,
+    scanAll = function()
+        for sym in pairs(scan) do
+            scan[sym] = nil
+        end
+        for _, sym in ipairs(symbolOrder) do
+            scanOne(sym)
+        end
+        return scan
+    end,
+    strategy = function(value)
+        if value then
+            strategy = tostring(value)
+        end
+        return strategy
+    end,
+}
 
 Window:LoadAutoload()
-
-Window:Notify({ Title = "Robscript", Content = "Auto gigs is ready", Type = "Success" })
+if refreshProjectPicker then
+    refreshProjectPicker()
+end
 
 getgenv().RobscriptETM = {
     Window = Window,
+    airflow = Airflow,
     flags = Airflow.Flags,
     solveGig = solveGig,
     activity = results,
     request = request,
-    version = "1.1.0",
+    roblux = RobluxAPI,
+    ui = getgenv().RobluxUI,
+    tradex = getgenv().Tradex,
+    version = "2.5.0",
 }
