@@ -467,146 +467,6 @@ end
 
 ----- window -----
 
-do
-    local duration = 10
-    local telegramLink = "https://t.me/roblox_scripts"
-    local discordInvite = ""
-    local player = game:GetService("Players").LocalPlayer
-    local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
-    local gate = Instance.new("ScreenGui")
-
-    local ok, err = pcall(function()
-        assert(playerGui, "PlayerGui is unavailable")
-        gate.Name = "RobscriptCommunityGate"
-        gate.DisplayOrder = 1000
-        gate.ResetOnSpawn = false
-
-        local function create(className, parent, properties)
-            local object = Instance.new(className)
-            for property, value in pairs(properties) do
-                object[property] = value
-            end
-            object.Parent = parent
-            return object
-        end
-
-        local card = create("Frame", gate, {
-            Active = true,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.new(1, -28, 0, 166),
-            BackgroundColor3 = THEME.Surface,
-            BorderSizePixel = 0,
-        })
-        create("UISizeConstraint", card, { MaxSize = Vector2.new(376, 166) })
-        create("UICorner", card, { CornerRadius = UDim.new(0, 12) })
-        create("UIStroke", card, { Color = THEME.StrokeHover })
-
-        local title = create("TextLabel", card, {
-            BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(16, 14),
-            Size = UDim2.new(1, -70, 0, 25),
-            Font = Enum.Font.GothamBold,
-            Text = "RobScript Community",
-            TextSize = 19,
-            TextColor3 = THEME.Text,
-            TextScaled = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        })
-        create("UITextSizeConstraint", title, { MaxTextSize = 19 })
-        local countdown = create("TextLabel", card, {
-            BackgroundTransparency = 1,
-            AnchorPoint = Vector2.new(1, 0),
-            Position = UDim2.new(1, -16, 0, 14),
-            Size = UDim2.fromOffset(38, 25),
-            Font = Enum.Font.GothamBold,
-            Text = ("%ds"):format(duration),
-            TextSize = 15,
-            TextColor3 = THEME.Accent,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        })
-        create("TextLabel", card, {
-            BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(16, 41),
-            Size = UDim2.new(1, -32, 0, 29),
-            Font = Enum.Font.Gotham,
-            Text = "Get script updates and talk to the community.",
-            TextSize = 12,
-            TextWrapped = true,
-            TextColor3 = THEME.Text,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        })
-        local status = create("TextLabel", card, {
-            BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(16, 118),
-            Size = UDim2.new(1, -32, 0, 23),
-            Font = Enum.Font.Gotham,
-            Text = "The script opens automatically.",
-            TextSize = 12,
-            TextColor3 = THEME.Muted,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        })
-
-        local function addLinkButton(label, name, link, primary)
-            local available = link ~= ""
-            local button = create("TextButton", card, {
-                Position = UDim2.new(primary and 0 or 0.5, primary and 16 or 4, 0, 75),
-                Size = UDim2.new(0.5, -20, 0, 36),
-                BackgroundColor3 = primary and THEME.Accent or THEME.Surface3,
-                BorderSizePixel = 0,
-                Font = Enum.Font.GothamBold,
-                Text = available and label or (name .. " invite pending"),
-                TextSize = 12,
-                TextColor3 = primary and THEME.AccentDark or (available and THEME.Text or THEME.Muted),
-                Active = available,
-                Interactable = available,
-                Selectable = available,
-                AutoButtonColor = available,
-            })
-            create("UICorner", button, { CornerRadius = UDim.new(0, 7) })
-            if available then
-                button.Activated:Connect(function()
-                    local clipboard = setclipboard or toclipboard or (Clipboard and Clipboard.set)
-                    local copied = type(clipboard) == "function" and pcall(clipboard, link)
-                    status.Text = copied and (name .. " link copied") or link
-                end)
-            end
-        end
-        addLinkButton("Copy Telegram Link", "Telegram", telegramLink, true)
-        addLinkButton("Copy Discord Invite", "Discord", discordInvite, false)
-
-        local track = create("Frame", card, {
-            Position = UDim2.fromOffset(16, 148),
-            Size = UDim2.new(1, -32, 0, 3),
-            BackgroundColor3 = THEME.Surface3,
-            BorderSizePixel = 0,
-        })
-        local progress = create("Frame", track, {
-            Size = UDim2.fromScale(1, 1),
-            BackgroundColor3 = THEME.Accent,
-            BorderSizePixel = 0,
-        })
-
-        gate.Parent = playerGui
-        game:GetService("RunService").RenderStepped:Wait()
-        local deadline = os.clock() + duration
-        while gate.Parent do
-            local remaining = deadline - os.clock()
-            if remaining <= 0 then
-                break
-            end
-            countdown.Text = ("%ds"):format(math.ceil(remaining))
-            progress.Size = UDim2.fromScale(remaining / duration, 1)
-            task.wait(math.min(remaining, 0.05))
-        end
-    end)
-
-    gate:Destroy()
-    if not ok then
-        warn("[Robscript ETM] Community window could not be shown: " .. tostring(err))
-    end
-end
-
 local Window = Airflow:CreateWindow({
     Name = "Escape The Matrix",
     Subtitle = "Robscript Team",
@@ -3772,3 +3632,99 @@ getgenv().RobscriptETM = {
     tradex = getgenv().Tradex,
     version = "2.5.0",
 }
+
+task.defer(function()
+    local gui
+    local ok, err = pcall(function()
+        local player = game:GetService("Players").LocalPlayer
+        local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
+        if not playerGui then
+            return
+        end
+
+        local channel = "https://t.me/roblox_scripts"
+        local function create(className, parent, properties)
+            local object = Instance.new(className)
+            for property, value in pairs(properties) do
+                object[property] = value
+            end
+            object.Parent = parent
+            return object
+        end
+
+        gui = Instance.new("ScreenGui")
+        gui.Name = "RobscriptTelegramPromo"
+        gui.DisplayOrder = 1000
+        gui.ResetOnSpawn = false
+
+        local card = create("Frame", gui, {
+            Active = false,
+            AnchorPoint = Vector2.new(1, 1),
+            Position = UDim2.new(1, -16, 1, -16),
+            Size = UDim2.new(1, -32, 0, 78),
+            BackgroundColor3 = THEME.Surface,
+            BorderSizePixel = 0,
+        })
+        create("UISizeConstraint", card, { MaxSize = Vector2.new(288, 78) })
+        create("UICorner", card, { CornerRadius = UDim.new(0, 10) })
+        create("UIStroke", card, { Color = THEME.StrokeHover })
+        create("TextLabel", card, {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(13, 10),
+            Size = UDim2.new(1, -26, 0, 23),
+            Font = Enum.Font.GothamBold,
+            Text = "RobScript on Telegram",
+            TextSize = 16,
+            TextColor3 = THEME.Text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        local description = create("TextLabel", card, {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(13, 39),
+            Size = UDim2.new(1, -106, 0, 27),
+            Font = Enum.Font.Gotham,
+            Text = "New scripts and updates",
+            TextSize = 12,
+            TextColor3 = THEME.Text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        local button = create("TextButton", card, {
+            AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -13, 0, 37),
+            Size = UDim2.fromOffset(76, 29),
+            BackgroundColor3 = THEME.Accent,
+            BorderSizePixel = 0,
+            Font = Enum.Font.GothamBold,
+            Text = "Copy link",
+            TextSize = 12,
+            TextColor3 = THEME.AccentDark,
+        })
+        create("UICorner", button, { CornerRadius = UDim.new(0, 6) })
+        button.Activated:Connect(function()
+            local clipboard = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+            if type(clipboard) == "function" and pcall(clipboard, channel) then
+                button.Text = "Copied"
+            else
+                description.Text = channel
+            end
+        end)
+
+        local previous = playerGui:FindFirstChild(gui.Name)
+        if previous and previous:IsA("ScreenGui") then
+            previous:Destroy()
+        end
+        gui.Parent = playerGui
+        task.delay(10, function()
+            if gui.Parent then
+                gui:Destroy()
+            end
+        end)
+    end)
+
+    if not ok then
+        if gui then
+            gui:Destroy()
+        end
+        warn("[Robscript ETM] Telegram card could not be shown: " .. tostring(err))
+    end
+end)
