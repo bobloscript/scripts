@@ -3639,15 +3639,16 @@ task.defer(function()
     local gui
 
     local ok, err = pcall(function()
-        local player = game:GetService("Players").LocalPlayer
-        local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
-        if not playerGui then
+        local windowGui = Window.Gui
+        local guiParent = windowGui and windowGui.Parent
+        if not guiParent then
             return
         end
 
         gui = Instance.new("ScreenGui")
         gui.Name = "RobscriptTelegramPromo"
-        gui.DisplayOrder = 1000
+        gui.DisplayOrder = windowGui.DisplayOrder + 1
+        gui.IgnoreGuiInset = windowGui.IgnoreGuiInset
         gui.ResetOnSpawn = false
 
         local function create(className, parent, properties)
@@ -3745,11 +3746,11 @@ task.defer(function()
             BorderSizePixel = 0,
         })
 
-        local previous = playerGui:FindFirstChild(gui.Name)
+        local previous = guiParent:FindFirstChild(gui.Name)
         if previous and previous:IsA("ScreenGui") then
             previous:Destroy()
         end
-        gui.Parent = playerGui
+        gui.Parent = guiParent
         local deadline = os.clock() + duration
         while gui.Parent do
             local remaining = deadline - os.clock()
